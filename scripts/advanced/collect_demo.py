@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Literal
@@ -28,8 +27,10 @@ class Args:
     """Simulator backend"""
     demo_start_idx: int | None = None
     """The index of the first demo to collect, None for all demos"""
-    max_demo_idx: int | None = None
-    """Maximum number of demos to collect, None for all demos"""
+    # max_demo_idx: int | None = None
+    # """Maximum number of demos to collect, None for all demos"""
+    num_demo_success: int | None = None
+    """Target number of successful demos to collect"""
     retry_num: int = 0
     """Number of retries for a failed demo"""
     headless: bool = True
@@ -74,9 +75,10 @@ class Args:
         assert self.run_all or self.run_unfinished or self.run_failed, (
             "At least one of run_all, run_unfinished, or run_failed must be True"
         )
-        if self.max_demo_idx is None:
-            self.max_demo_idx = math.inf
-
+        # if self.max_demo_idx is None:
+        #     self.max_demo_idx = math.inf
+        if self.num_demo_success is None:
+            self.num_demo_success = 100
         if self.demo_start_idx is None:
             self.demo_start_idx = 0
 
@@ -714,11 +716,12 @@ def main():
     ########################################################
     ## Main
     ########################################################
-    if args.max_demo_idx > n_demo:
-        log.warning(
-            f"Max demo {args.max_demo_idx} is greater than the number of demos in the dataset {n_demo}, using {n_demo}"
-        )
-    max_demo = min(args.max_demo_idx, n_demo)
+    # if args.max_demo_idx > n_demo:
+    #     log.warning(
+    #         f"Max demo {args.max_demo_idx} is greater than the number of demos in the dataset {n_demo}, using {n_demo}"
+    #     )
+    # max_demo = min(args.max_demo_idx, n_demo)
+    max_demo = n_demo
     try_num = args.retry_num + 1
 
     ## Demo collection state machine:
@@ -729,7 +732,8 @@ def main():
     # Get task description from environment
     task_desc = getattr(env, "task_desc", "")
     collector = DemoCollector(env.handler, robot, task_desc)
-    pbar = tqdm(total=max_demo - args.demo_start_idx, desc="Collecting demos")
+    # pbar = tqdm(total=max_demo - args.demo_start_idx, desc="Collecting demos")
+    pbar = tqdm(total=args.num_demo_success, desc="Collecting successful demos")
 
     ## State variables
     failure_count = [0] * env.handler.num_envs
@@ -749,7 +753,7 @@ def main():
 
     demo_indexer = DemoIndexer(
         save_root_dir=save_root_dir,
-        start_idx=0,
+        start_idx=args.demo_start_idx,
         end_idx=max_demo,
         pbar=pbar,
     )
@@ -783,7 +787,21 @@ def main():
         collector.create(demo_idx, obs[env_id])
 
     ## Main Loop
+    stop_flag = False
+
     while not all(finished):
+        # 如果已经达成停止条件，不再执行采集逻辑，等待循环自然结束
+        if stop_flag:
+            pass
+
+        if tot_success >= args.num_demo_success:
+            log.info(f"Reached target number of successful demos ({args.num_demo_success}).")
+            stop_flag = True
+
+        if demo_indexer.next_idx >= max_demo:
+            log.warning(f"Reached maximum demo index ({max_demo}).")
+            stop_flag = True
+
         pbar.set_description(f"Frame {global_step} Success {tot_success} Giveup {tot_give_up}")
         actions = get_actions(all_actions, env, demo_idxs, robot)
         obs, reward, success, time_out, extras = env.step(actions)
@@ -815,7 +833,7 @@ def main():
                 collector.save(demo_idx, status="success")
                 collector.delete(demo_idx)
 
-                if demo_indexer.next_idx < max_demo:
+                if (not stop_flag) and (demo_indexer.next_idx < max_demo):
                     new_demo_idx = demo_indexer.next_idx
                     demo_idxs[env_id] = new_demo_idx
                     log.info(f"Transitioning Env {env_id}: Demo {demo_idx} to Demo {new_demo_idx}")
@@ -853,7 +871,7 @@ def main():
                 log.error(f"Demo {demo_idx} failed too many times, giving up")
                 failure_count[env_id] = 0
                 tot_give_up += 1
-                pbar.update(1)
+                # pbar.update(1)
                 pbar.set_description(f"Frame {global_step} Success {tot_success} Giveup {tot_give_up}")
 
                 if demo_indexer.next_idx < max_demo:
