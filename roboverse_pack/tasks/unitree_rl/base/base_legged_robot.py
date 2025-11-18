@@ -139,7 +139,7 @@ class LeggedRobotTask(AgentTask):
         # delay = torch.rand((self.num_envs, 1), device=self.device)
         # actions = (1 - delay) * actions = torch.clip(actions, -self.action_clip, self.action_clip)
 
-        for pre_fn, _params in self.pre_physics_step_callback.values():
+        for pre_fn, _params in self.pre_physics_step_callback.values():  # NOTE empty dict
             pre_fn(self, **_params)
         actions = torch.clip(actions, -self.action_clip, self.action_clip)
 

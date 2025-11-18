@@ -2,6 +2,8 @@
 
 """Launch Isaac Sim Simulator first."""
 
+# TODO this will be deprecated once the simulator-agnostic script is complete
+
 import argparse
 import sys
 
@@ -132,7 +134,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         env = multi_agent_to_single_agent(env)
 
     # wrap around environment for rsl-rl
-    env = RslRlVecEnvWrapper(env)
+    env = RslRlVecEnvWrapper(env)  # TODO use RoboVerse simulator-agnostic env wrapper
 
     # load previously trained model
     ppo_runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)

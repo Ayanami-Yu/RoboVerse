@@ -18,13 +18,8 @@ from metasim.task.registry import get_task_class
 
 from roboverse_learn.rl.beyondmimic.helper.exporter import attach_onnx_metadata, export_motion_policy_as_onnx
 from roboverse_learn.rl.beyondmimic.helper.utils import make_robots, make_objects, get_log_dir, get_load_path, get_args, set_seed
+from rsl_rl.runners import OnPolicyRunner  # TODO should it be runner-library-agnostic?
 
-# from roboverse_pack.tasks.unitree_rl.base.types import EnvTypes
-# from roboverse_learn.rl.unitree_rl.helper import (get_args, make_objects, get_log_dir,
-#                                                   make_robots, set_seed, get_load_path,
-#                                                   PolicyExporterLSTM, export_policy_as_jit,
-#                                                   get_export_jit_path)
-# from roboverse_learn.rl.unitree_rl.runners import EnvWrapperTypes, MasterRunner
 
 def prepare(args):
     task_cls = get_task_class(args.task)
@@ -67,27 +62,28 @@ def play(args):
     master_runner = prepare(args)
     name_0 = list(master_runner.runners.keys())[0]
     if args.resume:
-        if args.jit_load:
+        if args.jit_load:  # False
             log_dir = get_log_dir(task_name=master_runner.task_name, now=args.resume)
             policy_0 = torch.jit.load(get_load_path(load_root=log_dir, checkpoint=args.checkpoint))
         else:
             policys = master_runner.load(resume_dir=args.resume, checkpoint=args.checkpoint)
-            policy_0 = policys[name_0]
+            policy_0 = policys[name_0]  # rsl_rl.modules.actor_critic.ActorCritic.act_inference()
     else:
         raise ValueError("Please provide the resume dir for eval policy.")
 
     runner_0 = master_runner.runners[name_0]
-    env_0: EnvTypes = runner_0.env
-    envwrapper_0: EnvWrapperTypes = runner_0.env_wrapper
-    cfg_0 = env_0.cfg
+    env_0: EnvTypes = runner_0.env  # WalkG1Dof29Task
+    envwrapper_0: EnvWrapperTypes = runner_0.env_wrapper  # RslRlEnvWrapper
+    cfg_0 = env_0.cfg  # WalkG1Dof29EnvCfg
 
     cfg_0.curriculum.enabled = False
     cfg_0.commands.resampling_time = 1e6  # effectively disable command changes
 
     # export jit policy
+    # task_name = "walk_g1_dof29"
     export_jit_path = get_export_jit_path(get_log_dir(task_name=master_runner.task_name, now=args.resume), master_runner.scenario)
     actor_critic = runner_0.runner.alg.policy
-    if hasattr(actor_critic, "memory_a"):
+    if hasattr(actor_critic, "memory_a"):  # False
         exporter = PolicyExporterLSTM(actor_critic)
         exporter.export(export_jit_path)
     else:
@@ -96,7 +92,7 @@ def play(args):
 
     # unenable noise and randomization for eval
 
-    env_0.reset()
+    env_0.reset()  # LeggedRobotTask.reset()
     obs, _, _, _, _ = env_0.step(torch.zeros(env_0.num_envs, env_0.num_actions, device=env_0.device))
     obs = envwrapper_0.get_observations()
 

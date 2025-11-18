@@ -71,7 +71,7 @@ class MasterRunner:
                     "cpu" if scenario_copy.simulator == "mujoco" else ("cuda" if torch.cuda.is_available() else "cpu")
                 )
 
-            env_cfg = env_cfg_cls()
+            env_cfg = env_cfg_cls()  # NOTE WalkG1Dof29EnvCfg
             env: EnvTypes = task_cls(
                 scenario=scenario_copy,
                 device=resolved_device,
