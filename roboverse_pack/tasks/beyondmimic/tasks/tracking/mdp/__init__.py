@@ -2,7 +2,7 @@
 
 from isaaclab.envs.mdp import *
 
-from beyondmimic.tasks.tracking.mdp import *
+from roboverse_pack.tasks.beyondmimic.tasks.tracking.mdp import *
 
 from .commands import *
 from .events import *

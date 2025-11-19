@@ -21,7 +21,7 @@ from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
-import beyondmimic.tasks.tracking.mdp as mdp
+import roboverse_pack.tasks.beyondmimic.tasks.tracking.mdp as mdp
 
 ##
 # Scene definition

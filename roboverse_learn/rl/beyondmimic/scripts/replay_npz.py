@@ -1,9 +1,4 @@
 """This script demonstrates how to use the interactive scene interface to setup a scene with multiple prims.
-
-.. code-block:: bash
-
-    # Usage
-    python replay_motion.py --motion_file source/whole_body_tracking/whole_body_tracking/assets/g1/motions/lafan_walk_short.npz
 """
 
 """Launch Isaac Sim Simulator first."""
@@ -39,8 +34,8 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 ##
 # Pre-defined configs
 ##
-from whole_body_tracking.robots.g1 import G1_CYLINDER_CFG
-from whole_body_tracking.tasks.tracking.mdp import MotionLoader
+from roboverse_pack.tasks.beyondmimic.robots.g1 import G1_CYLINDER_CFG
+from roboverse_pack.tasks.beyondmimic.tasks.tracking.mdp import MotionLoader
 
 
 @configclass

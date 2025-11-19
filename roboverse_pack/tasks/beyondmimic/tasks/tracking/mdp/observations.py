@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import torch
 from isaaclab.utils.math import matrix_from_quat, subtract_frame_transforms
 
-from beyondmimic.tasks.tracking.mdp.commands import MotionCommand
+from roboverse_pack.tasks.beyondmimic.tasks.tracking.mdp.commands import MotionCommand
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv

@@ -95,7 +95,7 @@ def play(args):
 
     env_0.reset()
     obs, _, _, _, _ = env_0.step(torch.zeros(env_0.num_envs, env_0.num_actions, device=env_0.device))
-    obs = envwrapper_0.get_observations()
+    obs = envwrapper_0.get_observations()  # TensorDict with keys "policy" and "critic" whose values correspond to 2D tensors
 
 
     for i in range(1000000):

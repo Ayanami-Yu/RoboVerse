@@ -13,7 +13,7 @@ import sys
 from isaaclab.app import AppLauncher
 
 # local imports
-import cli_args  # isort: skip
+import roboverse_learn.rl.beyondmimic.helper.cli_args as cli_args  # isort: skip
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
@@ -64,8 +64,8 @@ from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 
 # Import extensions to set up environment tasks
-import whole_body_tracking.tasks  # noqa: F401
-from whole_body_tracking.utils.my_on_policy_runner import MotionOnPolicyRunner as OnPolicyRunner
+import roboverse_pack.tasks.beyondmimic.tasks  # noqa: F401
+from roboverse_learn.rl.beyondmimic.runners.my_on_policy_runner import MotionOnPolicyRunner as OnPolicyRunner
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True

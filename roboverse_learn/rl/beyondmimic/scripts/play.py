@@ -1,111 +1,180 @@
-from __future__ import annotations
+"""Script to play a checkpoint if an RL agent from RSL-RL."""
 
-import copy
+"""Launch Isaac Sim Simulator first."""
 
-import rootutils
+import argparse
+import sys
 
-rootutils.setup_root(__file__, pythonpath=True)
+from isaaclab.app import AppLauncher
 
-try:
-    import isaacgym  # noqa: F401
-except ImportError:
-    pass
+# local imports
+import roboverse_learn.rl.beyondmimic.helper.cli_args as cli_args  # isort: skip
 
+# add argparse arguments
+parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
+parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
+parser.add_argument("--video_length", type=int, default=200, help="Length of the recorded video (in steps).")
+parser.add_argument(
+    "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
+)
+parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
+parser.add_argument("--task", type=str, default=None, help="Name of the task.")
+parser.add_argument("--motion_file", type=str, default=None, help="Path to the motion file.")
+# append RSL-RL cli arguments
+cli_args.add_rsl_rl_args(parser)
+# append AppLauncher cli args
+AppLauncher.add_app_launcher_args(parser)
+args_cli, hydra_args = parser.parse_known_args()
+# always enable cameras to record video
+if args_cli.video:
+    args_cli.enable_cameras = True
+
+# clear out sys.argv for Hydra
+sys.argv = [sys.argv[0]] + hydra_args
+
+# launch omniverse app
+app_launcher = AppLauncher(args_cli)
+simulation_app = app_launcher.app
+
+"""Rest everything follows."""
+
+import gymnasium as gym
+import os
+import pathlib
 import torch
 
-from metasim.scenario.scenario import ScenarioCfg
-from metasim.task.registry import get_task_class
+from rsl_rl.runners import OnPolicyRunner
 
+from isaaclab.envs import (
+    DirectMARLEnv,
+    DirectMARLEnvCfg,
+    DirectRLEnvCfg,
+    ManagerBasedRLEnvCfg,
+    multi_agent_to_single_agent,
+)
+from isaaclab.utils.dict import print_dict
+from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlVecEnvWrapper
+from isaaclab_tasks.utils import get_checkpoint_path
+from isaaclab_tasks.utils.hydra import hydra_task_config
+
+# Import extensions to set up environment tasks
+import roboverse_pack.tasks.beyondmimic.tasks  # noqa: F401
 from roboverse_learn.rl.beyondmimic.helper.exporter import attach_onnx_metadata, export_motion_policy_as_onnx
-from roboverse_learn.rl.beyondmimic.helper.utils import make_robots, make_objects, get_log_dir, get_load_path, get_args, set_seed
-from rsl_rl.runners import OnPolicyRunner  # TODO should it be runner-library-agnostic?
 
 
-def prepare(args):
-    task_cls = get_task_class(args.task)
-    scenario_template = getattr(task_cls, "scenario", ScenarioCfg())
-    scenario = copy.deepcopy(scenario_template)
+@hydra_task_config(args_cli.task, "rsl_rl_cfg_entry_point")
+def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlOnPolicyRunnerCfg):
+    """Play with RSL-RL agent."""
+    agent_cfg: RslRlOnPolicyRunnerCfg = cli_args.parse_rsl_rl_cfg(args_cli.task, args_cli)
+    env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
 
-    overrides = {
-        "num_envs": args.num_envs,
-        "simulator": args.sim,
-        "headless": args.headless,
-    }
+    # specify directory for logging experiments
+    log_root_path = os.path.join("logs", "rsl_rl", agent_cfg.experiment_name)
+    log_root_path = os.path.abspath(log_root_path)
 
-    if args.robots:
-        overrides["robots"] = make_robots(args.robots)
-        overrides["cameras"] = [
-            camera
-            for robot in overrides["robots"]
-            if hasattr(robot, "cameras")
-            for camera in getattr(robot, "cameras", [])
-        ]
+    if args_cli.wandb_path:
+        import wandb
 
-    if args.objects:
-        overrides["objects"] = make_objects(args.objects)
+        run_path = args_cli.wandb_path
 
-    scenario.update(**overrides)
-
-    device = "cpu" if args.sim == "mujoco" else ("cuda" if torch.cuda.is_available() else "cpu")
-
-    master_runner = MasterRunner(
-        task_cls=task_cls,
-        scenario=scenario,
-        log_path=args.resume,
-        lib_name="rsl_rl",
-        device=device,
-    )
-
-    return master_runner
-
-def play(args):
-    master_runner = prepare(args)
-    name_0 = list(master_runner.runners.keys())[0]
-    if args.resume:
-        if args.jit_load:  # False
-            log_dir = get_log_dir(task_name=master_runner.task_name, now=args.resume)
-            policy_0 = torch.jit.load(get_load_path(load_root=log_dir, checkpoint=args.checkpoint))
+        api = wandb.Api()
+        if "model" in args_cli.wandb_path:
+            run_path = "/".join(args_cli.wandb_path.split("/")[:-1])
+        wandb_run = api.run(run_path)
+        # loop over files in the run
+        files = [file.name for file in wandb_run.files() if "model" in file.name]
+        # files are all model_xxx.pt find the largest filename
+        if "model" in args_cli.wandb_path:
+            file = args_cli.wandb_path.split("/")[-1]
         else:
-            policys = master_runner.load(resume_dir=args.resume, checkpoint=args.checkpoint)
-            policy_0 = policys[name_0]  # rsl_rl.modules.actor_critic.ActorCritic.act_inference()
+            file = max(files, key=lambda x: int(x.split("_")[1].split(".")[0]))
+
+        wandb_file = wandb_run.file(str(file))
+        wandb_file.download("./logs/rsl_rl/temp", replace=True)
+
+        print(f"[INFO]: Loading model checkpoint from: {run_path}/{file}")
+        resume_path = f"./logs/rsl_rl/temp/{file}"
+
+        if args_cli.motion_file is not None:
+            print(f"[INFO]: Using motion file from CLI: {args_cli.motion_file}")
+            env_cfg.commands.motion.motion_file = args_cli.motion_file
+
+        art = next((a for a in wandb_run.used_artifacts() if a.type == "motions"), None)
+        if art is None:
+            print("[WARN] No model artifact found in the run.")
+        else:
+            env_cfg.commands.motion.motion_file = str(pathlib.Path(art.download()) / "motion.npz")
+
     else:
-        raise ValueError("Please provide the resume dir for eval policy.")
+        print(f"[INFO] Loading experiment from directory: {log_root_path}")
+        resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
+        print(f"[INFO]: Loading model checkpoint from: {resume_path}")
 
-    runner_0 = master_runner.runners[name_0]
-    env_0: EnvTypes = runner_0.env  # WalkG1Dof29Task
-    envwrapper_0: EnvWrapperTypes = runner_0.env_wrapper  # RslRlEnvWrapper
-    cfg_0 = env_0.cfg  # WalkG1Dof29EnvCfg
+    # create isaac environment
+    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
 
-    cfg_0.curriculum.enabled = False
-    cfg_0.commands.resampling_time = 1e6  # effectively disable command changes
+    log_dir = os.path.dirname(resume_path)
 
-    # export jit policy
-    # task_name = "walk_g1_dof29"
-    export_jit_path = get_export_jit_path(get_log_dir(task_name=master_runner.task_name, now=args.resume), master_runner.scenario)
-    actor_critic = runner_0.runner.alg.policy
-    if hasattr(actor_critic, "memory_a"):  # False
-        exporter = PolicyExporterLSTM(actor_critic)
-        exporter.export(export_jit_path)
-    else:
-        export_policy_as_jit(actor_critic.actor, export_jit_path)
-    print("Exported policy as jit script to: ", export_jit_path)
+    # wrap for video recording
+    if args_cli.video:
+        video_kwargs = {
+            "video_folder": os.path.join(log_dir, "videos", "play"),
+            "step_trigger": lambda step: step == 0,
+            "video_length": args_cli.video_length,
+            "disable_logger": True,
+        }
+        print("[INFO] Recording videos during training.")
+        print_dict(video_kwargs, nesting=4)
+        env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
-    # unenable noise and randomization for eval
+    # convert to single-agent instance if required by the RL algorithm
+    if isinstance(env.unwrapped, DirectMARLEnv):
+        env = multi_agent_to_single_agent(env)
 
-    env_0.reset()  # LeggedRobotTask.reset()
-    obs, _, _, _, _ = env_0.step(torch.zeros(env_0.num_envs, env_0.num_actions, device=env_0.device))
-    obs = envwrapper_0.get_observations()
+    # wrap around environment for rsl-rl
+    env = RslRlVecEnvWrapper(env)  # TODO use RoboVerse simulator-agnostic env wrapper
 
-    for i in range(1000000):
-        # set fixed command
-        env_0.commands_manager.value[:, 0] = 0.5
-        env_0.commands_manager.value[:, 1] = 0.0
-        env_0.commands_manager.value[:, 2] = 0.0
-        actions = policy_0(obs)
-        obs, _, _, _ = envwrapper_0.step(actions)
+    # load previously trained model
+    ppo_runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
+    ppo_runner.load(resume_path)
+
+    # obtain the trained policy for inference
+    policy = ppo_runner.get_inference_policy(device=env.unwrapped.device)
+
+    # export policy to onnx/jit
+    export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
+
+    export_motion_policy_as_onnx(
+        env.unwrapped,
+        ppo_runner.alg.policy,
+        normalizer=ppo_runner.obs_normalizer,
+        path=export_model_dir,
+        filename="policy.onnx",
+    )
+    attach_onnx_metadata(env.unwrapped, args_cli.wandb_path if args_cli.wandb_path else "none", export_model_dir)
+    # reset environment
+    obs, _ = env.get_observations()
+    timestep = 0
+    # simulate environment
+    while simulation_app.is_running():
+        # run everything in inference mode
+        with torch.inference_mode():
+            # agent stepping
+            actions = policy(obs)
+            # env stepping
+            obs, _, _, _ = env.step(actions)
+        if args_cli.video:
+            timestep += 1
+            # Exit the play loop after recording one video
+            if timestep == args_cli.video_length:
+                break
+
+    # close the simulator
+    env.close()
 
 
 if __name__ == "__main__":
-    args = get_args()
-    set_seed(args.seed)
-    play(args)
+    # run the main function
+    main()
+    # close sim app
+    simulation_app.close()
