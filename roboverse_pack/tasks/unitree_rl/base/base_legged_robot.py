@@ -47,7 +47,7 @@ class LeggedRobotTask(AgentTask):
         raise NotImplementedError
 
     def _instantiate_cfg(self, config: BaseEnvCfg | None):
-        self.cfg = config
+        self.cfg = config  # FIXME reassignment?
         # value assignments from configs
         self.decimation = self.cfg.control.decimation
         self.step_dt = self.sim_dt * self.decimation
