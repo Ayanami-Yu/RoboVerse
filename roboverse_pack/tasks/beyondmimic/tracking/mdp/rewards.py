@@ -6,7 +6,6 @@ import torch
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor
 from isaaclab.utils.math import quat_error_magnitude
-
 from roboverse_pack.tasks.beyondmimic.tasks.tracking.mdp.commands import MotionCommand
 
 if TYPE_CHECKING:

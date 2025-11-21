@@ -63,7 +63,7 @@ class MasterRunner:
         for robot in robot_cfgs:
             scenario_copy = copy.deepcopy(scenario)
             scenario_copy.robots = [robot]
-            scenario_copy.__post_init__()
+            scenario_copy.__post_init__()  # TODO why explicitly calling __post_init__ (again?)
 
             resolved_device = device
             if resolved_device is None:

@@ -34,7 +34,7 @@ class ScenarioCfg:
     sim_params: SimParamCfg = SimParamCfg()
     simulator: (
         Literal[
-            "isaaclab",
+            "isaaclab",  # FIXME why is this not "isaacsim"
             "isaacgym",
             "sapien2",
             "sapien3",

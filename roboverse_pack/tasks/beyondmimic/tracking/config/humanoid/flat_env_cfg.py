@@ -3,7 +3,7 @@ from isaaclab.utils import configclass
 
 from roboverse_pack.tasks.beyondmimic.assets import ASSET_DIR
 from roboverse_pack.tasks.beyondmimic.robots.smpl import SMPL_HUMANOID
-from roboverse_pack.tasks.beyondmimic.tasks.tracking.tracking_env_cfg import TrackingEnvCfg
+from roboverse_pack.tasks.beyondmimic.tracking.tracking_env_cfg import TrackingEnvCfg
 
 
 @configclass

@@ -13,7 +13,7 @@ try:
     from .registry import _discover_task_modules
 
     _discover_task_modules()
-    _register_all_tasks_with_gym()
+    _register_all_tasks_with_gym()  # FIXME this registers all the tasks (even unused) which is unnecessary
 except Exception:
     # Best-effort: scripts can still call register_task_with_gym on-demand.
     pass

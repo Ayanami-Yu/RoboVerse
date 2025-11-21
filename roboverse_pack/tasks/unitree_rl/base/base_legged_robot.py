@@ -31,6 +31,7 @@ class LeggedRobotTask(AgentTask):
     ) -> None:
         super().__init__(scenario=scenario, config=config, device=device)
         self.name = self.robot.name if hasattr(self, "robot") else getattr(self, "name", None)
+        # TODO check what these params are used for
         self.num_actions = len(self.robot.actuators)
         self.sim_dt = self.scenario.sim_params.dt
         self.sorted_body_names = self.handler.get_body_names(self.name, sort=True)
@@ -39,7 +40,7 @@ class LeggedRobotTask(AgentTask):
         self._instantiate_cfg(self.cfg)
         self._init_joint_cfg()
         self._init_reward_function()
-        self._init_buffers()
+        self._init_buffers()  # NOTE command resampling is done here instead of in `reset()`
         self.reset()
 
     def _compute_task_observations(self, env_states: TensorState) -> tuple[torch.Tensor, torch.Tensor | None]:

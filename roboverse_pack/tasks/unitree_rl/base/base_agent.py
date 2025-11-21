@@ -24,13 +24,13 @@ class AgentTask(RLTaskEnv):
         config: Any | BaseEnvCfg,
         device: str | torch.device | None = None,
     ) -> None:
-        self.cfg = config
+        self.cfg = config  # WalkG1Dof29EnvCfg
         _callbacks_cfg = asdict(getattr(self.cfg, "callbacks", CallbacksCfg()))
         self._query: dict = _callbacks_cfg.pop("query", {})
         self.robot = scenario.robots[0]
         BaseTaskEnv.__init__(self, scenario=scenario, device=device)
         self._initial_states = list_state_to_tensor(self.handler, self._get_initial_states(), self.device)
-        # buffers will be allocated lazily once handler is available
+        # buffers will be allocated lazily once handler is available  # TODO `self.handler` is still not available here?
         self.obs_buf_queue: deque[torch.Tensor] | None = None
         self.priv_obs_buf_queue: deque[torch.Tensor] | None = None
         self.actions: torch.Tensor | None = None

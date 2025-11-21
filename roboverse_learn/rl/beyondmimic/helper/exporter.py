@@ -11,7 +11,7 @@ import onnx
 from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab_rl.rsl_rl.exporter import _OnnxPolicyExporter
 
-from beyondmimic.tasks.tracking.mdp import MotionCommand
+from roboverse_pack.tasks.beyondmimic.tracking.mdp import MotionCommand
 
 
 def export_motion_policy_as_onnx(

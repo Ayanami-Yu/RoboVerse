@@ -1,4 +1,3 @@
-"""Python module serving as a project/extension template."""
+"""BeyondMimic task package for RoboVerse."""
 
-# Register Gym environments.
-from .tasks import *
+from roboverse_pack.tasks.beyondmimic.tracking import *

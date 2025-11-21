@@ -4,21 +4,26 @@ from __future__ import annotations
 
 import os
 from collections import deque
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import InitVar, dataclass
 
 import torch
+from gymnasium import spaces
 
 from metasim.scenario.scenario import ScenarioCfg
+from metasim.sim.base import BaseSimHandler
 from metasim.task.rl_task import RLTaskEnv
 from metasim.types import Action, Reward, TensorState
+from metasim.utils.hf_util import check_and_download_single
 from metasim.utils.state import list_state_to_tensor
-from roboverse_pack.tasks.beyondmimic.tasks.tracking.mdp_rv.commands import MotionCommandRV
-from roboverse_pack.tasks.beyondmimic.tasks.tracking.mdp_rv.observations import (
+from roboverse_learn.rl.beyondmimic.helper.utils import pattern_match
+from roboverse_pack.tasks.beyondmimic.tracking.mdp_rv.commands import MotionCommandRV
+from roboverse_pack.tasks.beyondmimic.tracking.mdp_rv.observations import (
     compute_observations,
     compute_privileged_observations,
 )
-from roboverse_pack.tasks.beyondmimic.tasks.tracking.mdp_rv.rewards import compute_rewards
-from roboverse_pack.tasks.beyondmimic.tasks.tracking.mdp_rv.terminations import compute_terminations
+from roboverse_pack.tasks.beyondmimic.tracking.mdp_rv.rewards import compute_rewards
+from roboverse_pack.tasks.beyondmimic.tracking.mdp_rv.terminations import compute_terminations
 
 # Import sample_uniform
 try:
@@ -42,9 +47,9 @@ class TrackingTaskCfg:
     # Motion command settings
     motion_file: str = ""
     anchor_body_name: str = "torso_link"
-    body_names: list[str] = None
-    pose_range: dict[str, tuple[float, float]] = None
-    velocity_range: dict[str, tuple[float, float]] = None
+    body_names: InitVar[list[str] | None] = None
+    pose_range: dict[str, tuple[float, float]] | None = None
+    velocity_range: dict[str, tuple[float, float]] | None = None
     joint_position_range: tuple[float, float] = (-0.1, 0.1)
     resampling_time_range: tuple[float, float] = (1.0e9, 1.0e9)
 
@@ -60,18 +65,44 @@ class TrackingTaskCfg:
 
     # Observation settings
     enable_corruption: bool = True
-    observation_noise: dict[str, tuple[float, float]] = None
+    observation_noise: dict[str, tuple[float, float]] | None = None
 
     # Reward weights
-    reward_weights: dict[str, float] = None
+    reward_weights: dict[str, float] | None = None
 
     # Termination thresholds
-    termination_thresholds: dict[str, float] = None
+    termination_thresholds: dict[str, float] | None = None
 
-    def __post_init__(self):
+    class InitialStates:
+        """Initial states using BeyondMimic's configs."""
+
+        objects = {}
+        robots = {
+            "g1_dof29": {
+                "pos": [0.0, 0.0, 0.76],
+                "rot": [1.0, 0.0, 0.0, 0.0],
+                "joint_pos": {
+                    ".*_hip_pitch_joint": -0.312,
+                    ".*_knee_joint": 0.669,
+                    ".*_ankle_pitch_joint": -0.363,
+                    ".*_elbow_joint": 0.6,
+                    "left_shoulder_roll_joint": 0.2,
+                    "left_shoulder_pitch_joint": 0.2,
+                    "right_shoulder_roll_joint": -0.2,
+                    "right_shoulder_pitch_joint": 0.2,
+                    "left_wrist_roll_joint": 0.15,
+                    "right_wrist_roll_joint": -0.15,
+                },
+                "joint_vel": {".*": 0.0},
+            },
+        }
+
+    initial_states = InitialStates()
+
+    def __post_init__(self, body_names: list[str] | None):
         """Set default values."""
-        if self.body_names is None:
-            self.body_names = []
+        if body_names:
+            self.body_names = body_names
         if self.pose_range is None:
             self.pose_range = {
                 "x": (-0.05, 0.05),
@@ -137,32 +168,49 @@ class TrackingTaskRV(RLTaskEnv):
             task_cfg: Task-specific configuration
             device: Device to run on
         """
-        if task_cfg is None:
-            task_cfg = TrackingTaskCfg()
+        assert len(scenario.robots) > 0, "At least one robot must be specified"
+        self.robot = scenario.robots[0]  # TODO handle multiple robots
+        self.robot_name = scenario.robots[0].name
+
         self.task_cfg = task_cfg
         self.max_episode_steps = task_cfg.max_episode_steps
 
-        # Initialize base class
-        super().__init__(scenario, device)
+        if device is None:
+            device = "cpu" if scenario.simulator == "mujoco" else ("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device(device)
 
-        # Initialize motion command
-        assert len(scenario.robots) > 0, "At least one robot must be specified"
-        robot_cfg = scenario.robots[0]
-        self.robot_name = robot_cfg.name if hasattr(robot_cfg, "name") else "robot"
+        self.scenario = scenario
+        self.num_envs = self.scenario.num_envs
 
-        # Motion command will be initialized after handler is available
-        self.motion_command: MotionCommandRV | None = None
+        # Initialize simulation handler
+        if isinstance(self.scenario, BaseSimHandler):
+            self.handler = self.scenario
+        else:
+            self._instantiate_env(self.scenario)
+        if self.traj_filepath is not None:
+            check_and_download_single(self.traj_filepath)
+
+        self._prepare_callbacks()
+        self._episode_steps = torch.zeros(self.num_envs, dtype=torch.int32, device=self.device)
+
+        # Get initial states
+        self._initial_states = list_state_to_tensor(self.handler, self._get_initial_states(), self.device)
+
+        self._observation_space: spaces.Space | None = None
+        self._action_space: spaces.Space | None = None
+
+        self.asymmetric_obs = False
+
+        # Initialize motion command after handler is available
+        self._initialize_motion_command()
 
         # Observation and action buffers
         self.obs_buf_queue: deque[torch.Tensor] = deque(maxlen=1)
         self.priv_obs_buf_queue: deque[torch.Tensor] = deque(maxlen=1)
         self.last_actions: torch.Tensor | None = None
 
-        # Initialize motion command after handler is available
-        self._initialize_motion_command()
+        # TODO no need to call `self._bind_callbacks()` here?
 
-        # Get initial states and reset
-        self._initial_states = list_state_to_tensor(self.handler, self._get_initial_states(), self.device)
         self.reset(env_ids=list(range(self.num_envs)))
 
         # Compute observation dimensions
@@ -171,12 +219,16 @@ class TrackingTaskRV(RLTaskEnv):
         self.num_obs = first_obs.shape[-1]
         self.num_priv_obs = self._privileged_observation(states).shape[-1]
 
-        # Action space from joint limits
-        joint_names = self.handler.get_joint_names(self.robot_name)
-        limits = self.handler.robots[0].joint_limits
-        self._action_low = torch.tensor([limits[j][0] for j in joint_names], dtype=torch.float32, device=self.device)
-        self._action_high = torch.tensor([limits[j][1] for j in joint_names], dtype=torch.float32, device=self.device)
-        self.num_actions = self._action_low.shape[0]
+        # Action bounds from joint limits (ordered by joint_names)
+        limits = self.robot.joint_limits
+        self.joint_names = self.handler.get_joint_names(self.robot.name)
+        self._action_low = torch.tensor(
+            [limits[j][0] for j in self.joint_names], dtype=torch.float32, device=self.device
+        )
+        self._action_high = torch.tensor(
+            [limits[j][1] for j in self.joint_names], dtype=torch.float32, device=self.device
+        )
+        self.num_actions = self._action_low.shape[0]  # TODO check equivalence with `len(self.robot.actuators)`
 
     def _initialize_motion_command(self):
         """Initialize the motion command system."""
@@ -203,8 +255,24 @@ class TrackingTaskRV(RLTaskEnv):
 
     def _get_initial_states(self) -> list[dict]:
         """Return per-env initial states."""
-        # Return None to use default states from handler
-        return None
+        robot_state = self.task_cfg.initial_states.robots[self.robot.name]
+
+        sorted_joint_names = self.handler.get_joint_names(self.robot.name, sort=True)
+        joint_pos = pattern_match(robot_state["joint_pos"], sorted_joint_names)
+        joint_vel = pattern_match(robot_state["joint_vel"], sorted_joint_names)
+
+        template = {
+            "objects": {},
+            "robots": {
+                self.robot.name: {
+                    "pos": torch.tensor(robot_state["pos"], dtype=torch.float32),
+                    "rot": torch.tensor(robot_state["rot"], dtype=torch.float32),
+                    "dof_pos": {name: joint_pos[name] for name in joint_pos},
+                    "dof_vel": {name: joint_vel[name] for name in joint_vel},
+                }
+            },
+        }
+        return [deepcopy(template) for _ in range(self.scenario.num_envs)]
 
     def _observation(self, env_states: TensorState) -> torch.Tensor:
         """Compute observations from environment state."""

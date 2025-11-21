@@ -78,9 +78,11 @@ def _discover_task_modules() -> None:
                 continue
 
             # Scan and import all submodules
-            for _finder, module_name, _is_pkg in pkgutil.walk_packages(pkg_path, prefix=pkg.__name__ + "."):
+            for _finder, module_name, _is_pkg in pkgutil.walk_packages(
+                pkg_path, prefix=pkg.__name__ + "."
+            ):  # FIXME no module named 'carb'
                 try:
-                    import_module(module_name)
+                    import_module(module_name)  # NOTE equivalent to `import module_name`
                 except Exception as e:
                     log.error(f"Task discovery: failed to import module '{module_name}': {e}")
         except Exception as e:

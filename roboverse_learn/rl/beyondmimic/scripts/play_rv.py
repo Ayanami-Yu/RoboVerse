@@ -6,7 +6,6 @@ import argparse
 import copy
 import os
 import pathlib
-import sys
 
 import torch
 
@@ -14,24 +13,9 @@ from metasim.scenario.scenario import ScenarioCfg
 from metasim.task.registry import get_task_class
 from rsl_rl.runners import OnPolicyRunner
 
-# Try to import CLI args helpers, but provide fallback
-try:
-    from roboverse_learn.rl.beyondmimic.helper.cli_args import add_rsl_rl_args, parse_rsl_rl_cfg
-except ImportError:
-    # Fallback if not available
-    def add_rsl_rl_args(parser):
-        """Add RSL-RL arguments."""
-        pass
-
-    def parse_rsl_rl_cfg(task_name, args):
-        """Parse RSL-RL config."""
-        # Return a minimal config dict
-        return type("Config", (), {
-            "to_dict": lambda: {},
-            "experiment_name": getattr(args, "experiment_name", "beyondmimic_tracking"),
-        })()
+from roboverse_learn.rl.beyondmimic.helper.cli_args import add_rsl_rl_args, parse_rsl_rl_cfg
 from roboverse_learn.rl.beyondmimic.runners.rsl_rl_rv import RslRlVecEnvWrapperRV
-from roboverse_pack.tasks.beyondmimic.tasks.tracking.tracking_task_rv import TrackingTaskCfg
+from roboverse_pack.tasks.beyondmimic.tracking.tracking_task_rv import TrackingTaskCfg
 
 
 def get_checkpoint_path(log_root_path: str, load_run: str, load_checkpoint: str) -> str:
@@ -71,13 +55,13 @@ def main():
     parser.add_argument("--checkpoint", type=str, default="last", help="Checkpoint to load (default: last).")
     parser.add_argument("--wandb_path", type=str, default=None, help="WandB run path to load model from.")
 
-    # Add RSL-RL arguments
+    # Add RSL-RL arguments  # TODO check if this call is necessary
     add_rsl_rl_args(parser)
 
     args = parser.parse_args()
 
     # Get task class
-    task_cls = get_task_class(args.task)
+    task_cls = get_task_class(args.task)  # FIXME can't find module beyondmimic.tracking anymore
 
     # Get scenario template from task class
     scenario_template = getattr(task_cls, "scenario", ScenarioCfg())
@@ -95,6 +79,40 @@ def main():
 
     # Determine device
     device = "cpu" if args.simulator == "mujoco" else ("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Load checkpoint
+    if args.wandb_path:
+        import wandb
+
+        run_path = args.wandb_path
+        api = wandb.Api()
+        if "model" in args.wandb_path:
+            run_path = "/".join(args.wandb_path.split("/")[:-1])
+        wandb_run = api.run(run_path)
+        files = [file.name for file in wandb_run.files() if "model" in file.name]
+        if "model" in args.wandb_path:
+            file = args.wandb_path.split("/")[-1]
+        else:
+            file = max(files, key=lambda x: int(x.split("_")[1].split(".")[0]))
+
+        wandb_file = wandb_run.file(str(file))
+        wandb_file.download("./logs/rsl_rl/temp", replace=True)
+        print(f"[INFO]: Loading model checkpoint from: {run_path}/{file}")
+        resume_path = f"./logs/rsl_rl/temp/{file}"
+
+        # Get motion file from artifact if available
+        art = next((a for a in wandb_run.used_artifacts() if a.type == "motions"), None)
+        if art is not None:
+            task_cfg.motion_file = str(pathlib.Path(art.download()) / "motion.npz")
+            # env.motion_command = None  # Force reinitialization
+            # env._initialize_motion_command()  # TODO check motion init
+    else:
+        if args.resume is None:
+            raise ValueError("Either --resume or --wandb_path must be provided.")
+        log_root_path = os.path.join("logs", "rsl_rl", agent_cfg.experiment_name)
+        log_root_path = os.path.abspath(log_root_path)
+        resume_path = get_checkpoint_path(log_root_path, args.resume, args.checkpoint)
+        print(f"[INFO]: Loading model checkpoint from: {resume_path}")
 
     # Create environment first (needed for config)
     env = task_cls(scenario=scenario, task_cfg=task_cfg, device=device)
@@ -124,39 +142,11 @@ def main():
     # Wrap for RSL-RL
     env_wrapper = RslRlVecEnvWrapperRV(env, train_cfg=agent_cfg.to_dict())
 
-    # Load checkpoint
-    if args.wandb_path:
-        import wandb
 
-        run_path = args.wandb_path
-        api = wandb.Api()
-        if "model" in args.wandb_path:
-            run_path = "/".join(args.wandb_path.split("/")[:-1])
-        wandb_run = api.run(run_path)
-        files = [file.name for file in wandb_run.files() if "model" in file.name]
-        if "model" in args.wandb_path:
-            file = args.wandb_path.split("/")[-1]
-        else:
-            file = max(files, key=lambda x: int(x.split("_")[1].split(".")[0]))
 
-        wandb_file = wandb_run.file(str(file))
-        wandb_file.download("./logs/rsl_rl/temp", replace=True)
-        print(f"[INFO]: Loading model checkpoint from: {run_path}/{file}")
-        resume_path = f"./logs/rsl_rl/temp/{file}"
 
-        # Get motion file from artifact if available
-        art = next((a for a in wandb_run.used_artifacts() if a.type == "motions"), None)
-        if art is not None:
-            task_cfg.motion_file = str(pathlib.Path(art.download()) / "motion.npz")
-            env.motion_command = None  # Force reinitialization
-            env._initialize_motion_command()
-    else:
-        if args.resume is None:
-            raise ValueError("Either --resume or --wandb_path must be provided.")
-        log_root_path = os.path.join("logs", "rsl_rl", agent_cfg.experiment_name)
-        log_root_path = os.path.abspath(log_root_path)
-        resume_path = get_checkpoint_path(log_root_path, args.resume, args.checkpoint)
-        print(f"[INFO]: Loading model checkpoint from: {resume_path}")
+
+
 
     # Create runner and load checkpoint
     train_cfg = agent_cfg.to_dict() if hasattr(agent_cfg, "to_dict") else agent_cfg

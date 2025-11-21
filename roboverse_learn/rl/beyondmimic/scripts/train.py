@@ -64,7 +64,7 @@ from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 
 # Import extensions to set up environment tasks
-import roboverse_pack.tasks.beyondmimic.tasks  # noqa: F401
+import roboverse_pack.tasks.beyondmimic.tracking  # noqa: F401
 from roboverse_learn.rl.beyondmimic.runners.my_on_policy_runner import MotionOnPolicyRunner as OnPolicyRunner
 
 torch.backends.cuda.matmul.allow_tf32 = True

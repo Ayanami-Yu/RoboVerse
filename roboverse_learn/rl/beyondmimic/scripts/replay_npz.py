@@ -35,7 +35,7 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 # Pre-defined configs
 ##
 from roboverse_pack.tasks.beyondmimic.robots.g1 import G1_CYLINDER_CFG
-from roboverse_pack.tasks.beyondmimic.tasks.tracking.mdp import MotionLoader
+from roboverse_pack.tasks.beyondmimic.tracking.mdp import MotionLoader
 
 
 @configclass

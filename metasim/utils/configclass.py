@@ -412,8 +412,8 @@ def _combined_function(f1: Callable, f2: Callable) -> Callable:
 
     def _combined(*args, **kwargs):
         # call both functions
-        f1(*args, **kwargs)
-        f2(*args, **kwargs)
+        f1(*args, **kwargs)  # user-defined __post_init__()
+        f2(*args, **kwargs)  # _custom_post_init()
 
     return _combined
 

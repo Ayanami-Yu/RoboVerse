@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import MISSING
 
 import isaaclab.sim as sim_utils
+import roboverse_pack.tasks.beyondmimic.tasks.tracking.mdp as mdp
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -20,8 +21,6 @@ from isaaclab.terrains import TerrainImporterCfg
 ##
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
-
-import roboverse_pack.tasks.beyondmimic.tasks.tracking.mdp as mdp
 
 ##
 # Scene definition

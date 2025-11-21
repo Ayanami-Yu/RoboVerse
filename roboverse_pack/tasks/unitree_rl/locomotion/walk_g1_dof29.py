@@ -17,6 +17,12 @@ from roboverse_learn.rl.unitree_rl.configs.locomotion.walk_g1_dof29 import (
 from roboverse_pack.tasks.unitree_rl.base import LeggedRobotTask
 
 
+# NOTE after registration, `TASK_REGISTRY` contains
+# {
+#     "unitree_rl.walk_g1_dof29": WalkG1Dof29Task,
+#     "g1.walk_g1_dof29": WalkG1Dof29Task,
+#     "walk_g1_dof29": WalkG1Dof29Task,
+# }
 @register_task(
     "unitree_rl.walk_g1_dof29",
     "g1.walk_g1_dof29",
@@ -34,11 +40,11 @@ class WalkG1Dof29Task(LeggedRobotTask):
         objects=[],
         cameras=[],
         num_envs=128,
-        simulator="isaacgym",
+        simulator="isaacgym",  # overridden by `scenario.update(**overrides)` in `main.py`
         headless=True,
         env_spacing=2.5,
         decimation=1,
-        sim_params=SimParamCfg(
+        sim_params=SimParamCfg(  # NOTE the parameters here won't get overridden
             dt=0.005,
             substeps=1,
             num_threads=10,
@@ -69,7 +75,7 @@ class WalkG1Dof29Task(LeggedRobotTask):
         env_cfg: WalkG1Dof29EnvCfg | None = None,
     ) -> None:
         scenario_copy = copy.deepcopy(scenario or type(self).scenario)
-        scenario_copy.__post_init__()
+        scenario_copy.__post_init__()  # TODO check before and after `__post_init__()`
 
         if env_cfg is None:
             env_cfg = type(self).env_cfg_cls()
@@ -84,7 +90,7 @@ class WalkG1Dof29Task(LeggedRobotTask):
         self.num_obs_single = 3 + 3 + 3 + self.num_actions * 3
         # commands + base_lin_vel + base_ang_vel + projected_gravity + dof pos/vel/prev actions
         self.num_priv_obs_single = 3 + 3 + 3 + 3 + self.num_actions * 3
-        # Rewrite SOME Hyfer-Parameters
+        # Rewrite SOME hyperparameters
         self.obs_clip_limit = 100.0
         self.obs_scale = torch.ones(size=(self.num_obs_single,), dtype=torch.float, device=self.device)
         self.priv_obs_scale = torch.ones(size=(self.num_priv_obs_single,), dtype=torch.float, device=self.device)
