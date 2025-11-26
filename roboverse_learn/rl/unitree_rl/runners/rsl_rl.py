@@ -128,7 +128,7 @@ class RslRlEnvWrapper:
     def cfg(self):
         return self.train_cfg
 
-    @property
+    @property  # TODO is this the only place that exposes privileged observations?
     def obs_buf(self) -> TensorDict:
         return TensorDict(policy=self.env.obs_buf,
                           critic=self.env.priv_obs_buf)
@@ -137,7 +137,7 @@ class RslRlEnvWrapper:
 class RslRlWrapper(BaseRunnerWrapper):
     def __init__(self, env: AgentTask, train_cfg: dict, log_dir:str):
         super().__init__(env, train_cfg, log_dir)
-        from rsl_rl.runners import OnPolicyRunner, DistillationRunner
+        from rsl_rl.runners import OnPolicyRunner, DistillationRunner  # TODO is DistillationRunner the only reason why unitree_rl uses RSL-RL 3.1.1?
 
         self.env_wrapper = RslRlEnvWrapper(self.env)
         self.runner = OnPolicyRunner(
@@ -148,7 +148,7 @@ class RslRlWrapper(BaseRunnerWrapper):
         )
 
     def learn(self, max_iterations=10000):
-        self.runner.learn(num_learning_iterations=max_iterations, init_at_random_ep_len=True)
+        self.runner.learn(num_learning_iterations=max_iterations, init_at_random_ep_len=True)  # TODO check `init_at_random_ep_len`'s meaning
 
     def load(self, path):
         self.runner.load(path)

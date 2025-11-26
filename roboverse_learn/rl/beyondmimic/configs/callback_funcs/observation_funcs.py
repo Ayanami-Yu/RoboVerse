@@ -1,0 +1,105 @@
+import torch
+
+from metasim.types import TensorState
+from metasim.utils.math import matrix_from_quat, subtract_frame_transforms, quat_rotate_inverse
+from roboverse_pack.tasks.beyondmimic.base.types import EnvTypes
+from roboverse_learn.rl.beyondmimic.helper.motion_utils import MotionCommand
+
+
+# adapted from BeyondMimic observations.py
+
+def robot_body_pos_b(env: EnvTypes, env_states: TensorState, cmd: MotionCommand) -> torch.Tensor:
+    """Body positions relative to (robot) anchor frame."""
+    robot_state = env_states.robots[env.name]
+
+    num_bodies = len(cmd.cfg.body_names)
+    pos_b, _ = subtract_frame_transforms(
+        robot_state.root_state[:, None, :3].repeat(1, num_bodies, 1),
+        robot_state.root_state[:, None, 3:7].repeat(1, num_bodies, 1),
+        robot_state.body_state[:, :, :3],
+        robot_state.body_state[:, :, 3:7],
+    )  # [n_envs, n_bodies, 3] positions of each body relative to the anchor frame
+
+    return pos_b.view(env.num_envs, -1)  # [n_envs, n_bodies * 3]
+
+
+def robot_body_ori_b(env: EnvTypes, env_states: TensorState, cmd: MotionCommand) -> torch.Tensor:
+    """Body orientations relative to anchor frame."""
+    robot_state = env_states.robots[env.name]
+
+    num_bodies = len(cmd.cfg.body_names)
+    _, ori_b = subtract_frame_transforms(
+        robot_state.root_state[:, None, :3].repeat(1, num_bodies, 1),
+        robot_state.root_state[:, None, 3:7].repeat(1, num_bodies, 1),
+        robot_state.body_state[:, :, :3],
+        robot_state.body_state[:, :, 3:7],
+    )
+    mat = matrix_from_quat(ori_b)
+    return mat[..., :2].reshape(mat.shape[0], -1)
+
+
+def motion_anchor_pos_b(env: EnvTypes, env_states: TensorState, cmd: MotionCommand) -> torch.Tensor:
+    """Target anchor position relative to anchor frame."""
+    robot_state = env_states.robots[env.name]
+
+    pos, _ = subtract_frame_transforms(
+        robot_state.root_state[:, :3],
+        robot_state.root_state[:, 3:7],
+        cmd.anchor_pos_w,
+        cmd.anchor_quat_w,
+    )
+
+    return pos.view(env.num_envs, -1)
+
+
+def motion_anchor_ori_b(env: EnvTypes, env_states: TensorState, cmd: MotionCommand) -> torch.Tensor:
+    robot_state = env_states.robots[env.name]
+
+    _, ori = subtract_frame_transforms(
+        robot_state.root_state[:, :3],  # [n_envs, 3]
+        robot_state.root_state[:, 3:7],  # [n_envs, 4]
+        cmd.anchor_pos_w,  # [n_envs, 3]
+        cmd.anchor_quat_w,  # [n_envs, 4]
+    )  # [n_envs, 4] quaternion representing the relative rotation between the two frames
+    mat = matrix_from_quat(ori)  # [n_envs, 3, 3] convert to rotation matrix
+    return mat[..., :2].reshape(mat.shape[0], -1)  # [n_envs, 6] extract the first two rows because the third row can be derived from orthogonality
+
+
+# adapted from isaaclab.envs.mdp.observations.py
+
+def generated_commands(env: EnvTypes) -> torch.Tensor:
+    """The generated command from command term in the command manager with the given name."""
+    # return env.command_manager.get_command(command_name)
+    # TODO return env.commands_manager.value
+    pass
+
+
+def base_lin_vel(env: EnvTypes, env_states: TensorState) -> torch.Tensor:
+    """Root linear velocity in the robot's root frame."""
+    robot_state = env_states.robots[env.name]
+    return quat_rotate_inverse(robot_state.root_state[:, 3:7], robot_state.root_state[:, 7:10])
+
+
+def base_ang_vel(env: EnvTypes, env_states: TensorState) -> torch.Tensor:
+    """Root angular velocity in the robot's root frame."""
+    robot_state = env_states.robots[env.name]
+    return quat_rotate_inverse(robot_state.root_state[:, 3:7], robot_state.root_state[:, 10:13])
+
+
+def joint_pos_rel(env: EnvTypes, env_states: TensorState) -> torch.Tensor:
+    """The joint positions of the robot w.r.t. the default joint positions."""
+    robot_state = env_states.robots[env.name]
+    return robot_state.joint_pos - env.default_dof_pos
+
+
+def joint_vel_rel(env: EnvTypes, env_states: TensorState):
+    """The joint velocities of the robot w.r.t. the default joint velocities."""
+    robot_state = env_states.robots[env.name]
+    return robot_state.joint_vel - env.default_dof_vel
+
+
+def last_action(env: EnvTypes, env_states: TensorState) -> torch.Tensor:
+    """The last input action to the environment."""
+    # return env.action_manager.action
+    # TODO check if this is correct
+    return env.history_buffer["actions"][-1]

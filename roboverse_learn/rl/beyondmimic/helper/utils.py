@@ -17,6 +17,7 @@ import numpy as np
 from metasim.utils.setup_util import get_robot
 from metasim.utils.string_util import is_camel_case, is_snake_case, to_camel_case
 from metasim.scenario.scenario import ScenarioCfg
+from roboverse_pack.tasks.beyondmimic.base.types import EnvTypes
 
 
 def parse_arguments(description="humanoid rl task arguments", custom_parameters=None):
@@ -160,7 +161,7 @@ def get_log_dir(task_name: str, now=None) -> str:
     return log_dir
 
 
-def get_class(name: str, suffix: str, library="roboverse_learn.rl.unitree_rl"):
+def get_class(name: str, suffix: str, library="roboverse_learn.rl.beyondmimic"):
     """Get the class wrappers.
     Example:
         get_class("ReachOrigin", "Cfg") -> ReachOriginCfg
@@ -220,12 +221,12 @@ def make_objects(objects_str: str) -> list[any]:
 
 def find_unique_candidate(candidates: list[any], data_base: list[any]) -> int:
     found_candidates = []
-    found_indices = []
+    found_indexes = []
 
     for candidate in candidates:
         if candidate in data_base:
             found_candidates.append(candidate)
-            found_indices.append(data_base.index(candidate))
+            found_indexes.append(data_base.index(candidate))
 
     if len(found_candidates) == 0:
         raise ValueError(f"None of the candidates {candidates} found in {data_base}")
@@ -234,15 +235,15 @@ def find_unique_candidate(candidates: list[any], data_base: list[any]) -> int:
             f"Multiple candidates found: {found_candidates}. Only one naming convention should be used."
         )
 
-    return found_indices[0]
+    return found_indexes[0]
 
 
-def get_indices_from_substring(
+def get_indexes_from_substring(
     candidates_list: list[str] | tuple[str] | str,
     data_base: list[str],
     fullmatch: bool = True,
 ) -> torch.Tensor:
-    """Get indices of items matching the candidates patterns.
+    """Get indexes of items matching the candidates patterns.
 
     Args:
         candidates_list: Single pattern or list of patterns (supports regex if use_regex=True)
@@ -250,15 +251,15 @@ def get_indices_from_substring(
         use_regex: If True, treat candidates as regex patterns. If False, use substring matching.
 
     Returns:
-        Sorted tensor of matching indices
+        Sorted tensor of matching indexes
 
     Examples:
-        >>> get_indices_from_substring(".*ankle.*", ["left_ankle", "right_ankle", "knee"])
+        >>> get_indexes_from_substring(".*ankle.*", ["left_ankle", "right_ankle", "knee"])
         tensor([0, 1])
-        >>> get_indices_from_substring([".*ankle.*", ".*knee.*"], ["left_ankle", "knee"])
+        >>> get_indexes_from_substring([".*ankle.*", ".*knee.*"], ["left_ankle", "knee"])
         tensor([0, 1])
     """
-    found_indices = []
+    found_indexes = []
     if isinstance(candidates_list, str):
         candidates_list = (candidates_list,)
     assert isinstance(
@@ -274,13 +275,24 @@ def get_indices_from_substring(
 
         for i, name in enumerate(data_base):
             if fullmatch and pattern.fullmatch(name):
-                found_indices.append(i)
+                found_indexes.append(i)
             elif not fullmatch and pattern.search(name):
-                found_indices.append(i)
+                found_indexes.append(i)
 
     # Remove duplicates and sort
-    found_indices = sorted(set(found_indices))
-    return torch.tensor(found_indices, dtype=torch.int32, requires_grad=False)
+    found_indexes = sorted(set(found_indexes))
+    return torch.tensor(found_indexes, dtype=torch.int32, requires_grad=False)
+
+
+def get_indexes(
+    env: EnvTypes, sub_names: tuple[str] | str, all_names: list[str] | tuple[str]
+):
+    hash_key = hash_names(sub_names)
+    if hash_key not in env.extras_buffer:
+        env.extras_buffer[hash_key] = get_indexes_from_substring(
+            sub_names, all_names, fullmatch=True
+        ).to(env.device)
+    return env.extras_buffer[hash_key]
 
 
 def reindex_func(

@@ -1,19 +1,9 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
-# All rights reserved.
-#
-# SPDX-License-Identifier: BSD-3-Clause
-
 from __future__ import annotations
 
 from dataclasses import MISSING
 from typing import Literal
 
 from metasim.utils import configclass
-
-
-#########################
-# Policy configurations #
-#########################
 
 
 @configclass
@@ -60,11 +50,6 @@ class RslRlPpoActorCriticRecurrentCfg(RslRlPpoActorCriticCfg):
 
     rnn_num_layers: int = MISSING
     """The number of RNN layers."""
-
-
-############################
-# Algorithm configurations #
-############################
 
 
 @configclass
@@ -122,11 +107,6 @@ class RslRlPpoAlgorithmCfg:
 
     symmetry_cfg: None = None
     """The symmetry configuration. Default is None, in which case symmetry is not used."""
-
-
-#########################
-# Runner configurations #
-#########################
 
 
 @configclass

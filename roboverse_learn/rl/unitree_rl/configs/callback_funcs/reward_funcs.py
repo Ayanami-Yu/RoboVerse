@@ -87,8 +87,8 @@ def joint_acc(env: EnvTypes, env_states: TensorState) -> torch.Tensor:
 def action_rate(env: EnvTypes, env_states: TensorState) -> torch.Tensor:
     """Penalize the rate of change of the actions using L2 squared kernel."""
     return torch.sum(
-        torch.square(env.history_buffer["actions"][-1] - env.actions), dim=1
-    )
+        torch.square(env.history_buffer["actions"][-1] - env.actions), dim=1  # [n_envs, n_dofs]
+    )  # [n_envs,]
 
 
 def joint_pos_limits(env: EnvTypes, env_states: TensorState) -> torch.Tensor:
@@ -225,6 +225,7 @@ def feet_gait(
         is_stance = leg_phase[:, i] < threshold
         reward += ~(is_stance ^ is_contact[:, i])
 
+    # only reward when the robot is commanded to move, so zero the reward when command speed is less than 0.1
     if command_name == "base_velocity":
         cmd_norm = torch.norm(env.commands_manager.value[:, :2], dim=1)
         reward *= (cmd_norm > 0.1).float()
@@ -277,7 +278,7 @@ def feet_clearance(
     return torch.exp(-torch.sum(reward, dim=1) / std**2)
 
 
-def undesired_contacts(
+def undesired_contacts(  # used
     env: EnvTypes,
     env_states: TensorState,
     threshold: float,
@@ -285,7 +286,7 @@ def undesired_contacts(
 ) -> torch.Tensor:
     """Penalize undesired contacts as the number of violations that are above a threshold."""
     indices = _get_indices(env, body_names, env_states.robots[env.name].body_names)
-    contact_forces: ContactForces = env_states.extras["contact_forces"][env.name]
+    contact_forces: ContactForces = env_states.extras["contact_forces"][env.name]  # TODO check how `body_ids_reindex` is computed
     is_contact = (
         contact_forces.contact_forces_history[:, :, indices, :]
         .norm(dim=-1)

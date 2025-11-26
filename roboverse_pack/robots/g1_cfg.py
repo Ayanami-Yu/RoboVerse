@@ -72,7 +72,6 @@ class G1Dof12Cfg(RobotCfg):
     #     "right_ankle_pitch_joint": 25,
     #     "right_ankle_roll_joint": 25,
     # }
-
     default_joint_positions: dict[str, float] = {
         # Hips & legs
         "left_hip_pitch_joint": -0.1,
@@ -251,7 +250,7 @@ class G1Dof27Cfg(G1Dof23Cfg):
     #     "right_wrist_pitch_joint": 5,
     #     "right_wrist_yaw_joint": 5,
     # }
-
+    # TODO this is used by BeyondMimic – check if correspondence is correct
     default_joint_positions = {
         **G1Dof23Cfg().default_joint_positions,
         "left_wrist_pitch_joint": 0.0,

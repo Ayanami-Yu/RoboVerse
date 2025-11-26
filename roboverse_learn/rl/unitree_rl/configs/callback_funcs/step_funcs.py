@@ -14,7 +14,7 @@ from roboverse_pack.tasks.unitree_rl.base.types import EnvTypes
 from roboverse_learn.rl.unitree_rl.configs.cfg_base import BaseEnvCfg
 
 
-def resample_commands(env: EnvTypes, env_states: TensorState = None):
+def resample_commands(env: EnvTypes, env_states: TensorState = None):  # used
     """Randomly select commands for some environments.
 
     Args:
@@ -70,7 +70,7 @@ def resample_commands(env: EnvTypes, env_states: TensorState = None):
         )
 
 
-def push_by_setting_velocity(
+def push_by_setting_velocity(  # used
     env: EnvTypes,
     env_states: TensorState,
     interval_range_s: tuple | int = 5.0,
@@ -104,7 +104,7 @@ def push_by_setting_velocity(
 
     env.handler.set_states(env_states, push_env_ids.tolist())
 
-class HistoryBuffer(deque):
+class HistoryBuffer(deque):  # FIXME unused in both training and evaluation
     """A simple LIFO buffer that stores multiple tensors per entry under specified keys.
 
     Each pushed entry is a dict mapping each key -> tensor (cloned on push).

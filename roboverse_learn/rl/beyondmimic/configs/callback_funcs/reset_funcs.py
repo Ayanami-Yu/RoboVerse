@@ -7,7 +7,8 @@ from metasim.utils.math import quat_from_euler_xyz, sample_uniform, quat_mul
 from roboverse_pack.tasks.beyondmimic.base.types import EnvTypes
 
 
-def random_root_state(env: EnvTypes, env_ids: torch.Tensor | list, pose_range: list[list]=[[0]*6, [0]*6], velocity_range: list[list]=[[0]*6, [0]*6]) -> torch.Tensor:
+def random_root_state(env: EnvTypes, env_ids: torch.Tensor | list, pose_range: list[list]=[[0]*6, [0]*6], velocity_range: list[list]=[[0] * 6, [0] * 6]) -> torch.Tensor:
+    """Randomize robot's root positions, orientations, and velocities within specified ranges."""
     if len(env_ids) == 0:
         return
 
@@ -29,11 +30,10 @@ def random_root_state(env: EnvTypes, env_ids: torch.Tensor | list, pose_range: l
     env.setup_initial_env_states.robots[env.name].root_state[env_ids, 0:3] = positions
     env.setup_initial_env_states.robots[env.name].root_state[env_ids, 3:7] = orientations
     env.setup_initial_env_states.robots[env.name].root_state[env_ids, 7:13] = velocities
-    # # set into the physics simulation
-    # env.write_robot_root_state(torch.cat([positions, orientations, velocities], dim=-1), env_ids=env_ids)
 
 
 def reset_joints_by_scale(env: EnvTypes, env_ids: torch.Tensor | list, position_range: list|tuple=(1.0, 1.0), velocity_range: list|tuple=(1.0, 1.0)) -> torch.Tensor:
+    """Randomly scale joint positions and velocities from defaults, then clamp to limits."""
     if len(env_ids) == 0:
         return
 
@@ -54,5 +54,3 @@ def reset_joints_by_scale(env: EnvTypes, env_ids: torch.Tensor | list, position_
 
     env.setup_initial_env_states.robots[env.name].joint_pos[env_ids] = joint_pos
     env.setup_initial_env_states.robots[env.name].joint_vel[env_ids] = joint_vel
-    # # set into the physics simulation
-    # asset.write_joint_state_to_sim(joint_pos, joint_vel, joint_ids=asset_cfg.joint_ids, env_ids=env_ids)

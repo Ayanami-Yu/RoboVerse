@@ -24,7 +24,7 @@ from roboverse_learn.rl.unitree_rl.helper import (get_args, make_objects, get_lo
 from roboverse_learn.rl.unitree_rl.runners import EnvWrapperTypes, MasterRunner
 
 def prepare(args):
-    task_cls = get_task_class(args.task)
+    task_cls = get_task_class(args.task)  # TODO is `env_cfg` also initialized here?
     scenario_template = getattr(task_cls, "scenario", ScenarioCfg())
     scenario = copy.deepcopy(scenario_template)
 
@@ -92,9 +92,10 @@ def play(args):
     print("Exported policy as jit script to: ", export_jit_path)
 
     # unenable noise and randomization for eval
-
+    # TODO this `step()` is just for initialization?
     env_0.reset()
-    obs, _, _, _, _ = env_0.step(torch.zeros(env_0.num_envs, env_0.num_actions, device=env_0.device))
+    # FIXME no need to get return value from `env_0.step()` since `envwrapper_0.get_observations()` will handle this
+    obs, _, _, _, _ = env_0.step(torch.zeros(env_0.num_envs, env_0.num_actions, device=env_0.device))  # NOTE `obs` is the concatenated observation history buffer
     obs = envwrapper_0.get_observations()  # TensorDict with keys "policy" and "critic" whose values correspond to 2D tensors
 
 

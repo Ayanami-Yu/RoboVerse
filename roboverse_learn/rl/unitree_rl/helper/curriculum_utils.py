@@ -4,7 +4,7 @@ import torch
 from roboverse_pack.tasks.unitree_rl.base.types import EnvTypes
 
 
-def lin_vel_cmd_levels(
+def lin_vel_cmd_levels(  # used
     env: EnvTypes,
     env_ids: list[int] | torch.Tensor,
     reward_term_name: str = "track_lin_vel_xy",
@@ -14,7 +14,7 @@ def lin_vel_cmd_levels(
         ranges = command_term.ranges
         limit_ranges = command_term.limit_ranges
 
-        reward_term_scales = env.reward_scales[reward_term_name][0] / env.step_dt
+        reward_term_scales = env.reward_scales[reward_term_name][0] / env.step_dt  # TODO why dividing instead of multiplying?
         reward = (
             torch.mean(env.episode_rewards[reward_term_name][env_ids])
             / env.cfg.episode_length_s
@@ -22,7 +22,7 @@ def lin_vel_cmd_levels(
 
         if reward > reward_term_scales * 0.8:
             delta_command = torch.tensor([-0.1, 0.1], device=env.device)
-            ranges.lin_vel_x = torch.clamp(
+            ranges.lin_vel_x = torch.clamp(  # ensure new ranges don't exceed the hard limits
                 torch.tensor(ranges.lin_vel_x, device=env.device) + delta_command,
                 limit_ranges.lin_vel_x[0],
                 limit_ranges.lin_vel_x[1],

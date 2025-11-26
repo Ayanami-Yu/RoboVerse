@@ -10,7 +10,7 @@ from roboverse_learn.rl.unitree_rl.helper import get_indices_from_substring
 from roboverse_pack.tasks.unitree_rl.base.types import EnvTypes
 
 
-def root_height_below_minimum(
+def root_height_below_minimum(  # used
     env: EnvTypes, env_states: TensorState, minimum_height: float
 ) -> torch.Tensor:
     """Terminate when the asset's root height is below the minimum height.
@@ -18,11 +18,11 @@ def root_height_below_minimum(
     Note:
         This is currently only supported for flat terrains, i.e. the minimum height is in the world frame.
     """
-    robot_state = env_states.robots[env.name]
+    robot_state = env_states.robots[env.name]  # len(robot_state.body_names) == 30 including "pelvis"; robot_state.body_state.shape == (n_envs, 30, 13); 13 = 3 (position) + 4 (orientation) + 3 (linear velocity) + 3 (angular velocity)
     return robot_state.root_state[:, 2] < minimum_height
 
 
-def bad_orientation(
+def bad_orientation(  # used
     env: EnvTypes, env_states: TensorState, limit_angle: float
 ) -> torch.Tensor:
     """Terminate when the asset's orientation is too far from the desired orientation limits.
@@ -36,12 +36,12 @@ def bad_orientation(
     return torch.acos(-projected_gravity[:, 2]).abs() > limit_angle
 
 
-def time_out(env: EnvTypes, env_states: TensorState) -> torch.Tensor:
+def time_out(env: EnvTypes, env_states: TensorState) -> torch.Tensor:  # used
     """Terminate the episode when the episode length exceeds the maximum episode length."""
     return env._episode_steps >= env.max_episode_steps
 
 
-def undesired_contact(
+def undesired_contact(  # unused
     env: EnvTypes,
     env_states: TensorState,
     contact_names: list[str],

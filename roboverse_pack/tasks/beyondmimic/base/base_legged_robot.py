@@ -12,9 +12,9 @@ from metasim.utils.state import TensorState
 from roboverse_learn.rl.beyondmimic.configs.cfg_base import BaseEnvCfg
 from roboverse_learn.rl.beyondmimic.helper import (
     get_axis_params,
-    get_reward_fn,
     pattern_match,
 )
+from roboverse_learn.rl.beyondmimic.helper.motion_utils import MotionCommand
 from roboverse_pack.robots import G1Dof12Cfg, Go2Cfg
 
 from .base_agent import AgentTask
@@ -53,10 +53,10 @@ class LeggedRobotTask(AgentTask):
         self.step_dt = self.sim_dt * self.decimation
         self.action_clip = self.cfg.control.action_clip
         self.action_scale = self.cfg.control.action_scale
-        # self.action_offset = self.cfg.control.action_offset
+
         self.common_step_counter = 0
         self.commands_manager = self.cfg.commands
-        self.reward_scales = asdict(self.cfg.rewards.scales)
+        # self.reward_scales = asdict(self.cfg.rewards.scales)
 
     def _init_joint_cfg(self):
         """Parse default joint positions and torque limits from cfg."""
@@ -90,7 +90,7 @@ class LeggedRobotTask(AgentTask):
 
         dof_pos_limits = robot.joint_limits
         sorted_dof_pos_limits = [dof_pos_limits[joint] for joint in sorted_joint_names]
-        self.dof_pos_limits = torch.tensor(sorted_dof_pos_limits, device=self.device)  # (n_dof, 2)
+        self.dof_pos_limits = torch.tensor(sorted_dof_pos_limits, device=self.device)  # (n_dofs, 2)
 
         soft_limit_factor = getattr(
             self.cfg.control,
@@ -100,6 +100,7 @@ class LeggedRobotTask(AgentTask):
         _mid = (self.dof_pos_limits[:, 0] + self.dof_pos_limits[:, 1]) / 2.0
         _diff = self.dof_pos_limits[:, 1] - self.dof_pos_limits[:, 0]
 
+        # NOTE same as `ArticulationData.soft_joint_pos_limits` in Isaac Lab
         self.soft_dof_pos_limits = torch.zeros_like(self.dof_pos_limits, device=self.device)
         self.soft_dof_pos_limits[:, 0] = _mid - 0.5 * _diff * soft_limit_factor
         self.soft_dof_pos_limits[:, 1] = _mid + 0.5 * _diff * soft_limit_factor
@@ -109,7 +110,7 @@ class LeggedRobotTask(AgentTask):
             "joint_velocity_limits",
             [getattr(robot.actuators[name], "velocity_limit", torch.inf) for name in sorted_joint_names],
         )
-        self.dof_vel_limits = torch.tensor(dof_vel_limits, device=self.device)  # (n_dof, 2)
+        self.dof_vel_limits = torch.tensor(dof_vel_limits, device=self.device)  # (n_dofs, 2)
         self.soft_dof_vel_limits = self.dof_vel_limits * getattr(
             self.cfg.control,
             "soft_joint_vel_limit_factor",
@@ -121,7 +122,8 @@ class LeggedRobotTask(AgentTask):
         )
         default_joint_pos = pattern_match(default_joint_pos, sorted_joint_names)
         sorted_joint_pos = [default_joint_pos[name] for name in sorted_joint_names]
-        self.default_dof_pos = torch.tensor(sorted_joint_pos, device=self.device)  # (n_dof,)
+        default_dof_pos = torch.tensor(sorted_joint_pos, device=self.device)  # (n_dofs,)
+        self.default_dof_pos = default_dof_pos.unsqueeze(0).repeat(self.scenario.num_envs, 1)  # (n_envs, n_dofs)
 
         default_joint_vel = getattr(robot, "default_joint_velocities", 0)
         if isinstance(default_joint_vel, dict):
@@ -131,51 +133,44 @@ class LeggedRobotTask(AgentTask):
             if isinstance(default_joint_vel, dict)
             else [default_joint_vel for _ in sorted_joint_names]
         )
-        self.default_dof_vel = torch.tensor(sorted_joint_vel, device=self.device)  # (n_dof,)
+        default_dof_vel = torch.tensor(sorted_joint_vel, device=self.device)  # (n_dofs,)
+        self.default_dof_vel = default_dof_vel.unsqueeze(0).repeat(self.scenario.num_envs, 1)  # (n_envs, n_dofs)
 
     def _pre_physics_step(self, actions: torch.Tensor):
-        """Apply action smoothing and apply pre-physics callbacks."""
-        # # low frequency action smoothing
-        # delay = torch.rand((self.num_envs, 1), device=self.device)
-        # actions = (1 - delay) * actions = torch.clip(actions, -self.action_clip, self.action_clip)
-
-        for pre_fn, _params in self.pre_physics_step_callback.values():  # NOTE empty dict
+        """Apply pre-physics callbacks."""
+        for pre_fn, _params in self.pre_physics_step_callback.values():
             pre_fn(self, **_params)
-        actions = torch.clip(actions, -self.action_clip, self.action_clip)
-
-        # TODO: add the support of multi-embodiments
-        # should return actions_list, [List, Action:[str, RobotAction:[...]]]
-        return actions
+        return torch.clip(actions, -self.action_clip, self.action_clip)
 
     def _init_reward_function(self):
         """Prepares a list of reward functions, which will be called to compute the total reward."""
-        self.reward_functions = {}
-        for _key in self.reward_scales.keys():
-            if isinstance(self.reward_scales[_key], tuple):
-                if len(self.reward_scales[_key]) == 2:
-                    scale, params = self.reward_scales[_key]
-                    func = get_reward_fn(_key, self.cfg.rewards.functions)
-                elif len(self.reward_scales[_key]) == 3:
-                    scale, params, func = self.reward_scales[_key]
-                else:
-                    raise ValueError("Reward scale tuple must be (scale, params) or (scale, params, func).")
-            elif isinstance(self.reward_scales[_key], (int, float)):
-                scale, params, func = self.reward_scales[_key], {}, get_reward_fn(_key, self.cfg.rewards.functions)
-            else:
-                raise ValueError("Reward scale must be a number, a tuple (scale, params) or (scale, params, func).")
-            # params = asdict(params) if isinstance(params, object) else params
-            # ################ check types ################
-            assert isinstance(scale, (int, float)), "Reward scale must be a number."
-            assert isinstance(params, dict), "Reward params must be a dictionary."
-            assert callable(func), "Reward function must be callable."
-            # ################ check types ################
-            if scale == 0:
-                self.reward_scales.pop(_key)
-            else:
-                self.reward_scales[_key] = (scale * self.step_dt, params)
-                self.reward_functions[_key] = func
+        # self.reward_functions = {}  # TODO check if removing this is ok
+        # for _key in self.reward_scales.keys():
+        #     if isinstance(self.reward_scales[_key], tuple):
+        #         if len(self.reward_scales[_key]) == 2:
+        #             scale, params = self.reward_scales[_key]
+        #             func = get_reward_fn(_key, self.cfg.rewards.functions)
+        #         elif len(self.reward_scales[_key]) == 3:
+        #             scale, params, func = self.reward_scales[_key]
+        #         else:
+        #             raise ValueError("Reward scale tuple must be (scale, params) or (scale, params, func).")
+        #     elif isinstance(self.reward_scales[_key], (int, float)):
+        #         scale, params, func = self.reward_scales[_key], {}, get_reward_fn(_key, self.cfg.rewards.functions)
+        #     else:
+        #         raise ValueError("Reward scale must be a number, a tuple (scale, params) or (scale, params, func).")
+
+        #     # check types
+        #     assert isinstance(scale, (int, float)), "Reward scale must be a number."
+        #     assert isinstance(params, dict), "Reward params must be a dictionary."
+        #     assert callable(func), "Reward function must be callable."
+        #     if scale == 0:
+        #         self.reward_scales.pop(_key)
+        #     else:
+        #         self.reward_scales[_key] = (scale * self.step_dt, params)
+        #         self.reward_functions[_key] = func
 
         # reward episode sums
+        # NOTE used for logging in `reset()`
         self.episode_rewards = {
             name: torch.zeros(
                 self.num_envs,
@@ -183,7 +178,7 @@ class LeggedRobotTask(AgentTask):
                 device=self.device,
                 requires_grad=False,
             )
-            for name in self.reward_scales.keys()
+            for name in asdict(self.cfg.rewards).keys()  # TODO check if this is correct
         }
 
     def _init_buffers(self):
@@ -193,14 +188,9 @@ class LeggedRobotTask(AgentTask):
             device=self.device,
         )
         self.actions_offset = self.default_dof_pos.clone() if self.cfg.control.action_offset else 0.0
-        # self.torques = torch.zeros(
-        #     size=(self.num_envs, self.num_actions),
-        #     dtype=torch.float,
-        #     device=self.device,
-        # )
         self.rew_buf = torch.zeros(size=(self.num_envs,), dtype=torch.float, device=self.device)
         self.reset_buf = torch.zeros(size=(self.num_envs,), dtype=torch.bool, device=self.device)
-        self.time_out_buf = torch.zeros(size=(self.num_envs,), dtype=torch.bool, device=self.device)
+        # self.time_out_buf = torch.zeros(size=(self.num_envs,), dtype=torch.bool, device=self.device)
 
         self.up_axis_idx = 2
         self.gravity_vec = torch.tensor(
@@ -217,7 +207,7 @@ class LeggedRobotTask(AgentTask):
 
         # for observation history
         env_states = self.handler.get_states()
-        obs_single, priv_single = self._compute_task_observations(env_states)
+        obs_single, priv_single = self._compute_task_observations(env_states)  # TODO
         self.obs_buf_queue = deque(
             [deepcopy(obs_single * 0.0) for _ in range(self.cfg.obs_len_history)],
             maxlen=self.cfg.obs_len_history,
@@ -240,14 +230,14 @@ class LeggedRobotTask(AgentTask):
 
     def _compute_effort(self, actions: torch.Tensor, env_states: TensorState) -> torch.Tensor:
         """Compute effort from actions using PD control."""
-        # Get current joint positions and velocities
+        # get current joint positions and velocities
         sorted_dof_pos = env_states.robots[self.name].joint_pos
         sorted_dof_vel = env_states.robots[self.name].joint_vel
 
-        # Compute PD control effort
+        # compute PD control effort
         effort = self.p_gains * (actions - sorted_dof_pos) - self.d_gains * sorted_dof_vel
 
-        # Apply torque limits
+        # apply torque limits
         effort = torch.clip(effort, -self.torque_limits, self.torque_limits)
         return effort.to(torch.float32)
 
@@ -262,6 +252,7 @@ class LeggedRobotTask(AgentTask):
                 _return_val = _func(self, env_ids)
                 self.extras["episode"]["Curriculum/" + _name] = _return_val
 
+        # call registered functions in reset_funcs.py
         for _reset_fn, _params in self.reset_callback.values():
             _ = _reset_fn(self, env_ids, **_params)
 
@@ -280,7 +271,7 @@ class LeggedRobotTask(AgentTask):
         for _priv_obs in self.priv_obs_buf_queue:
             _priv_obs[env_ids] = 0.0
 
-        ################# LOGS #################
+        # log
         for key in self.episode_rewards.keys():
             self.extras["episode"]["Episode_Reward/" + key] = (
                 torch.mean(self.episode_rewards[key][env_ids]) / self.cfg.episode_length_s
@@ -303,8 +294,8 @@ class LeggedRobotTask(AgentTask):
             actions = actions.unsqueeze(0)
 
         actions = self._pre_physics_step(actions)
-        self.actions[:] = actions  # .clip(-self.action_clip, self.action_clip).clone()
-        processed_actions = (
+        self.actions[:] = actions
+        processed_actions = (  # TODO modify action scale according to BeyondMimic
             (self.actions * self.action_scale + self.actions_offset).clip(-self.action_clip, self.action_clip).clone()
         )
         env_states = self.get_states()
@@ -313,7 +304,6 @@ class LeggedRobotTask(AgentTask):
                 self._compute_effort(processed_actions, env_states) if self.manual_pd_on else processed_actions
             )
             env_states = self._physics_step(applied_action)
-        # self.torques[:] = applied_action.clone()
 
         self._post_physics_step(env_states)
 
@@ -321,7 +311,7 @@ class LeggedRobotTask(AgentTask):
             self.obs_buf,
             self.rew_buf,
             self.reset_buf,
-            self.time_out_buf,
+            # self.time_out_buf,
             self.extras,
         )
 
@@ -329,15 +319,17 @@ class LeggedRobotTask(AgentTask):
         self._episode_steps += 1
         self.common_step_counter += 1
 
-        # gym-style return values
-        self.time_out_buf[:] = self._time_out(env_states)
-        self.reset_buf[:] = torch.logical_or(self.time_out_buf, self._terminated(env_states))
+        # TODO verify `time_out_buf` is unnecessary and remove it
+        # check termination conditions and compute rewards
+        # self.time_out_buf[:] = self._time_out(env_states)
+        # self.reset_buf[:] = torch.logical_or(self.time_out_buf, self._terminated(env_states))
+        self.reset_buf[:] = self._terminated(env_states)
         self.rew_buf[:] = self._reward(env_states)
 
         # reset envs
         reset_env_idx = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         if len(reset_env_idx) > 0:
-            self.reset(env_ids=reset_env_idx)
+            self.reset(env_ids=reset_env_idx)  # call reset functions in reset_funcs.py
 
         self.commands_manager.resample(self)
 
@@ -362,16 +354,23 @@ class LeggedRobotTask(AgentTask):
         for _step_fn, _params in self.post_physics_step_callback.values():
             _step_fn(self, env_states, **_params)
 
-    def _reward(self, env_states):
+    def _reward(self, env_states: TensorState, cmd: MotionCommand):
         rew_buf = torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
-        for name, func in self.reward_functions.items():
-            scale, params = self.reward_scales[name]
-            rew = scale * func(self, env_states, **params)
-            rew_buf += rew
-            self.episode_rewards[name] += rew
+        for name, term_cfg in asdict(self.cfg.rewards).items():
+            value = (
+                term_cfg.func(self, env_states, cmd=cmd, **term_cfg.params) * term_cfg.weight * self.step_dt
+            )  # TODO multiply `step_dt` or not
+            rew_buf += value  # update total reward
+            self.episode_rewards[name] += value  # update episodic sum
 
-        if self.cfg.rewards.only_positive_rewards:
-            rew_buf[:] = torch.clip(rew_buf[:], min=0.0)
+        # TODO if the followings are not used then remove them
+        # unitree_rl
+        # if self.cfg.rewards.only_positive_rewards:
+        #     rew_buf[:] = torch.clip(rew_buf[:], min=0.0)
+
+        # Isaac Lab
+        # update current reward for this step.
+        #     self._step_reward[:, self._term_names.index(name)] = value / dt
 
         return rew_buf
 
@@ -383,13 +382,6 @@ class LeggedRobotTask(AgentTask):
             reset_buf = torch.logical_or(reset_buf, _terminate_flag)
             self.episode_not_terminations[_key] += _terminate_flag.to(torch.float)
         return reset_buf
-
-    def _time_out(self, env_states: TensorState | None) -> torch.BoolTensor:
-        """Timeout flags.
-
-        Note that max_episode_steps is set to -1 by default (no timeout).
-        """
-        return self._episode_steps >= self.max_episode_steps
 
     def _get_initial_states(self):
         """Return list of per-env initial states derived from config."""

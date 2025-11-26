@@ -57,7 +57,7 @@ class AgentTask(RLTaskEnv):
 
         _setup_callbacks = callbacks.pop("setup", {})
         for _setup_fn, _params in _setup_callbacks.values():
-            _setup_fn(**_params)  ## call itself
+            _setup_fn(env=self, **_params)  # TODO check if this will break `MaterialRandomizer` and `MassRandomizer`
         self.reset_callback = callbacks.pop("reset", {})
         assert isinstance(self.reset_callback, dict)
         self.pre_physics_step_callback = callbacks.pop("pre_step", {})
@@ -85,7 +85,7 @@ class AgentTask(RLTaskEnv):
         return self.handler.get_states()
 
     def set_states(self, states: TensorState, env_ids: list[int] | None = None) -> None:
-        """Set simulator state for selected env indices."""
+        """Set simulator state for selected env indexes."""
         self.handler.set_states(states=states, env_ids=env_ids)
 
     def _physics_step(self, actions: Action) -> TensorState:

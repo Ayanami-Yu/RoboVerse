@@ -26,7 +26,7 @@ class AgentTask(RLTaskEnv):
     ) -> None:
         self.cfg = config
         _callbacks_cfg = asdict(getattr(self.cfg, "callbacks", CallbacksCfg()))
-        self._query: dict = _callbacks_cfg.pop("query", {})
+        self._query: dict = _callbacks_cfg.pop("query", {})  # NOTE a key-value pair
         self.robot = scenario.robots[0]
         BaseTaskEnv.__init__(self, scenario=scenario, device=device)
         self._initial_states = list_state_to_tensor(self.handler, self._get_initial_states(), self.device)
@@ -57,7 +57,7 @@ class AgentTask(RLTaskEnv):
 
         _setup_callbacks = callbacks.pop("setup", {})
         for _setup_fn, _params in _setup_callbacks.values():
-            _setup_fn(**_params)  ## call itself
+            _setup_fn(**_params)  # call itself
         self.reset_callback = callbacks.pop("reset", {})
         assert isinstance(self.reset_callback, dict)
         self.pre_physics_step_callback = callbacks.pop("pre_step", {})

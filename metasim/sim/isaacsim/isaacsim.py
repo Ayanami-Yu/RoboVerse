@@ -497,7 +497,7 @@ class IsaacsimHandler(BaseSimHandler):
             if self._manual_pd_on[i]:
                 robot_inst.set_joint_effort_target(
                     action_tensor_all[:, start_idx : start_idx + len(actionable_joint_ids)],
-                    joint_ids=actionable_joint_ids,
+                    joint_ids=actionable_joint_ids,  # original (simulator) order
                 )
             else:
                 robot_inst.set_joint_position_target(

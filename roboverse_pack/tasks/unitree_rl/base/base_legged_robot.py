@@ -29,12 +29,13 @@ class LeggedRobotTask(AgentTask):
         config: BaseEnvCfg,
         device: str | torch.device | None = None,
     ) -> None:
-        super().__init__(scenario=scenario, config=config, device=device)
+        super().__init__(scenario=scenario, config=config, device=device)  # NOTE bind callbacks here
         self.name = self.robot.name if hasattr(self, "robot") else getattr(self, "name", None)
         self.num_actions = len(self.robot.actuators)
         self.sim_dt = self.scenario.sim_params.dt
-        self.sorted_body_names = self.handler.get_body_names(self.name, sort=True)
-        self.sorted_joint_names = self.handler.get_joint_names(self.name, sort=True)
+        # TODO is `body_names` encapsulated by handler? but MotionCommand needs to specify a subset of it
+        self.sorted_body_names = self.handler.get_body_names(self.name, sort=True)  # [30]  # TODO check this
+        self.sorted_joint_names = self.handler.get_joint_names(self.name, sort=True)  # [29]
 
         self._instantiate_cfg(self.cfg)
         self._init_joint_cfg()
@@ -115,7 +116,7 @@ class LeggedRobotTask(AgentTask):
             "soft_joint_vel_limit_factor",
             getattr(self.robot, "soft_joint_vel_limit_factor", 1.0),
         )
-
+        # TODO check default joint pos correspondence
         default_joint_pos = self.cfg.initial_states.robots[robot.name].get(
             "default_joint_pos", robot.default_joint_positions
         )
@@ -213,7 +214,7 @@ class LeggedRobotTask(AgentTask):
             1,
         ))
 
-        self.commands_manager.resample(self)
+        self.commands_manager.resample(self)  # step_funcs.resample_commands()
 
         # for observation history
         env_states = self.handler.get_states()
@@ -283,7 +284,8 @@ class LeggedRobotTask(AgentTask):
         ################# LOGS #################
         for key in self.episode_rewards.keys():
             self.extras["episode"]["Episode_Reward/" + key] = (
-                torch.mean(self.episode_rewards[key][env_ids]) / self.cfg.episode_length_s
+                torch.mean(self.episode_rewards[key][env_ids])
+                / self.cfg.episode_length_s  # NOTE this is the same in `RewardManager.reset()` in Isaac Lab
             )
             self.episode_rewards[key][env_ids] = 0.0
         for key in self.episode_not_terminations.keys():
@@ -310,7 +312,7 @@ class LeggedRobotTask(AgentTask):
         env_states = self.get_states()
         for _ in range(self.decimation):
             applied_action = (
-                self._compute_effort(processed_actions, env_states) if self.manual_pd_on else processed_actions
+                self._compute_effort(processed_actions, env_states) if self.manual_pd_on else processed_actions  # True
             )
             env_states = self._physics_step(applied_action)
         # self.torques[:] = applied_action.clone()
@@ -321,7 +323,7 @@ class LeggedRobotTask(AgentTask):
             self.obs_buf,
             self.rew_buf,
             self.reset_buf,
-            self.time_out_buf,
+            self.time_out_buf,  # FIXME this is not used?
             self.extras,
         )
 
@@ -330,7 +332,9 @@ class LeggedRobotTask(AgentTask):
         self.common_step_counter += 1
 
         # gym-style return values
-        self.time_out_buf[:] = self._time_out(env_states)
+        self.time_out_buf[:] = self._time_out(
+            env_states
+        )  # FIXME time-out will be computed in `_terminated()` so this is redundant
         self.reset_buf[:] = torch.logical_or(self.time_out_buf, self._terminated(env_states))
         self.rew_buf[:] = self._reward(env_states)
 
@@ -367,8 +371,8 @@ class LeggedRobotTask(AgentTask):
         for name, func in self.reward_functions.items():
             scale, params = self.reward_scales[name]
             rew = scale * func(self, env_states, **params)
-            rew_buf += rew
-            self.episode_rewards[name] += rew
+            rew_buf += rew  # [n_envs,]
+            self.episode_rewards[name] += rew  # [n_envs,]  # TODO check where else `episode_rewards` is used
 
         if self.cfg.rewards.only_positive_rewards:
             rew_buf[:] = torch.clip(rew_buf[:], min=0.0)
@@ -384,12 +388,14 @@ class LeggedRobotTask(AgentTask):
             self.episode_not_terminations[_key] += _terminate_flag.to(torch.float)
         return reset_buf
 
-    def _time_out(self, env_states: TensorState | None) -> torch.BoolTensor:
+    def _time_out(
+        self, env_states: TensorState | None
+    ) -> torch.BoolTensor:  # FIXME `time_out` already exists in `termination_funcs.py` so this is redundant
         """Timeout flags.
 
         Note that max_episode_steps is set to -1 by default (no timeout).
         """
-        return self._episode_steps >= self.max_episode_steps
+        return self._episode_steps >= self.max_episode_steps  # [n_envs]
 
     def _get_initial_states(self):
         """Return list of per-env initial states derived from config."""

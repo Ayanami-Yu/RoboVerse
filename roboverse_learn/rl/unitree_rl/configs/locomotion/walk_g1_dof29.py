@@ -111,8 +111,8 @@ class WalkG1Dof29EnvCfg(BaseEnvCfg):
         },
     )
 
-    callbacks_query = {"contact_forces": ContactForces(history_length=3)}
-    callbacks_setup = {
+    callbacks_query = {"contact_forces": ContactForces(history_length=3)}  # `_query`  # NOTE will be included in `env_states.extras["contact_forces"]`
+    callbacks_setup = {  # NOTE corresponds to startup mode of Isaac Lab `EventTermCfg`
         "material_randomizer": MaterialRandomizer(
             obj_name="g1_dof29",
             static_friction_range=(0.3, 1.0),
@@ -127,7 +127,7 @@ class WalkG1Dof29EnvCfg(BaseEnvCfg):
             operation="add",
         ),
     }
-    callbacks_reset = {
+    callbacks_reset = {  # `reset_callback`
         "random_root_state": (
             reset_funcs.random_root_state,
             {
@@ -143,7 +143,7 @@ class WalkG1Dof29EnvCfg(BaseEnvCfg):
             {"position_range": (1.0, 1.0), "velocity_range": (-1.0, 1.0)},
         ),
     }
-    callbacks_post_step = {
+    callbacks_post_step = {  # post_physics_step_callback
         "push_robot": (
             step_funcs.push_by_setting_velocity,
             {
@@ -152,7 +152,7 @@ class WalkG1Dof29EnvCfg(BaseEnvCfg):
             },
         )
     }
-    callbacks_terminate = {
+    callbacks_terminate = {  # `terminate_callback`
         "time_out": termination_funcs.time_out,
         "base_height": (
             termination_funcs.root_height_below_minimum,
@@ -170,7 +170,7 @@ class WalkG1Dof29EnvRslRlTrainCfg(RslRlOnPolicyRunnerCfg):
     experiment_name = ""  # same as task name
     empirical_normalization = False
     policy = RslRlPpoActorCriticCfg(
-        init_noise_std=1.0,
+        init_noise_std=1.0,  # TODO check how noise is used
         actor_hidden_dims=[512, 256, 128],
         critic_hidden_dims=[512, 256, 128],
         activation="elu",

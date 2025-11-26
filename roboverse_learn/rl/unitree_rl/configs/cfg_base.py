@@ -110,7 +110,7 @@ class BaseEnvCfg:
     callbacks_terminate: dict[str, tuple[Callable, dict] | Callable] = MISSING
     callbacks_query: dict[str, tuple[Callable, dict] | Callable] = MISSING
 
-    def __post_init__(self):
+    def __post_init__(self):  # NOTE `callbacks_query` etc. have been assigned in subclass
         self.callbacks = CallbacksCfg()
         _normalize = lambda value: {} if value is MISSING else value
         self.callbacks.query = _normalize(self.callbacks_query)

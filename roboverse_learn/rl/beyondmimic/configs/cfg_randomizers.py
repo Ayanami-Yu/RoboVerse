@@ -47,7 +47,7 @@ class MaterialRandomizer(BaseQueryType):
         self.simulator_name = handler.scenario.simulator
         self.initialize()
 
-    def __call__(self, env_ids=None):
+    def __call__(self, env_ids=None, **kwargs):
         # resolve environment ids
         if env_ids is None:
             env_ids = torch.arange(self.handler.num_envs, device="cpu")
@@ -346,7 +346,7 @@ class MassRandomizer(BaseQueryType):
         )
         self.default_masses = deepcopy(self._get_masses())
 
-    def __call__(self, env_ids: torch.Tensor | None = None):
+    def __call__(self, env_ids: torch.Tensor | None = None, **kwargs):
         # resolve environment ids
         if env_ids is None:
             env_ids = torch.arange(self.handler.num_envs, device="cpu")
@@ -518,7 +518,7 @@ class MassRandomizer(BaseQueryType):
         # sample from the given range
         # note: we modify the masses in-place for all environments
         #   however, the setter takes care that only the masses of the specified environments are modified
-        masses = _randomize_prop_by_op(
+        masses = randomize_prop_by_op(
             masses,
             self.mass_distribution_params,
             env_ids,
@@ -537,13 +537,9 @@ class MassRandomizer(BaseQueryType):
             self._recompute_inertias(ratios, env_ids)
 
 
-##########################################################################################
-# Private Helper Functions
-# FROM NVIDIA ISAAC LAB
-##########################################################################################
+# helper functions adapted from Isaac Lab
 
-
-def _randomize_prop_by_op(
+def randomize_prop_by_op(
     data: torch.Tensor,
     distribution_parameters: tuple[float | torch.Tensor, float | torch.Tensor],
     dim_0_ids: torch.Tensor | None,
@@ -662,9 +658,3 @@ def _validate_scale_range(
         )
     if high < low:
         raise ValueError(f"{name}: upper bound ({high}) must be ≥ lower bound ({low}).")
-
-
-##########################################################################################
-# Private Helper Functions
-# FROM NVIDIA ISAAC LAB
-##########################################################################################

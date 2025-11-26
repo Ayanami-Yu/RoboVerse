@@ -42,7 +42,7 @@ class MasterRunner:
         scenario: ScenarioCfg,
         log_path: str | None = None,
         lib_name: str = "rsl_rl",
-        device: str | torch.device | None = None,
+        device: str | torch.device = "cuda",
     ):
         self.task_cls = task_cls
         self.task_name = getattr(task_cls, "task_name", task_cls.__name__)
@@ -52,7 +52,7 @@ class MasterRunner:
 
         env_cfg_cls: Type[BaseEnvCfg] = getattr(task_cls, "env_cfg_cls", BaseEnvCfg)
         train_cfg_cls = getattr(task_cls, "train_cfg_cls", None)
-        runner_cls = get_class(lib_name, suffix="Wrapper", library="roboverse_learn.rl.unitree_rl.runners")
+        runner_cls = get_class(lib_name, suffix="Wrapper", library="roboverse_learn.rl.beyondmimic.runners")
 
         module = sys.modules[task_cls.__module__]
         env_cls_path = getattr(module, "__file__", None)
@@ -65,20 +65,13 @@ class MasterRunner:
             scenario_copy.robots = [robot]
             scenario_copy.__post_init__()
 
-            resolved_device = device
-            if resolved_device is None:
-                resolved_device = (
-                    "cpu" if scenario_copy.simulator == "mujoco" else ("cuda" if torch.cuda.is_available() else "cpu")
-                )
-
-            env_cfg = env_cfg_cls()  # NOTE WalkG1Dof29EnvCfg
+            env_cfg = env_cfg_cls()
             env: EnvTypes = task_cls(
                 scenario=scenario_copy,
-                device=resolved_device,
+                device=device,
                 env_cfg=env_cfg,
             )
-
-            train_cfg = train_cfg_cls() if callable(train_cfg_cls) else train_cfg_cls
+            train_cfg = train_cfg_cls()
 
             log_dir = get_log_dir(task_name=self.task_name, now=now)
             runner: BaseRunnerWrapper = runner_cls(env=env, train_cfg=train_cfg, log_dir=log_dir)

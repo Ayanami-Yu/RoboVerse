@@ -12,14 +12,6 @@ class RslRlEnvWrapper:
         self.env = env
         self.train_cfg = train_cfg
 
-    def get_observations(self) -> TensorDict:
-        """Return the current observations.
-
-        Returns:
-            observations (TensorDict): Observations from the environment.
-        """
-        raise
-
     def step(self, actions: torch.Tensor) -> tuple[torch.Tensor, Union[torch.Tensor, None], torch.Tensor, torch.Tensor, dict]:
         _ = self.env.step(actions)
         return self.obs_buf, self.env.rew_buf, self.env.reset_buf, self.env.extras
@@ -64,7 +56,7 @@ class RslRlEnvWrapper:
 class RslRlWrapper(BaseRunnerWrapper):
     def __init__(self, env: AgentTask, train_cfg: dict, log_dir:str):
         super().__init__(env, train_cfg, log_dir)
-        from rsl_rl.runners import OnPolicyRunner, DistillationRunner
+        from rsl_rl.runners import OnPolicyRunner
 
         self.env_wrapper = RslRlEnvWrapper(self.env)
         self.runner = OnPolicyRunner(
@@ -74,7 +66,7 @@ class RslRlWrapper(BaseRunnerWrapper):
             log_dir=log_dir,
         )
 
-    def learn(self, max_iterations=10000):
+    def learn(self, max_iterations=30000):
         self.runner.learn(num_learning_iterations=max_iterations, init_at_random_ep_len=True)
 
     def load(self, path):
