@@ -106,7 +106,7 @@ class WalkG1Dof29Task(LeggedRobotTask):
         self.obs_noise[6:9] = 0.05  # projected_gravity
         self.obs_noise[9 : 9 + self.num_actions] = 0.01
         self.obs_noise[9 + self.num_actions : 9 + 2 * self.num_actions] = 1.5  # joint velocities
-        return super()._init_buffers()
+        return super()._init_buffers()  # FIXME but there is no return value?
 
     def _compute_task_observations(self, env_states: TensorState):
         robot_state = env_states.robots[self.robot.name]

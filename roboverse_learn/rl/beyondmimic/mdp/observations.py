@@ -3,16 +3,15 @@ import torch
 from metasim.types import TensorState
 from metasim.utils.math import matrix_from_quat, subtract_frame_transforms, quat_rotate_inverse
 from roboverse_pack.tasks.beyondmimic.base.types import EnvTypes
-from roboverse_learn.rl.beyondmimic.helper.motion_utils import MotionCommand
 
 
 # adapted from BeyondMimic observations.py
 
-def robot_body_pos_b(env: EnvTypes, env_states: TensorState, cmd: MotionCommand) -> torch.Tensor:
+def robot_body_pos_b(env: EnvTypes, env_states: TensorState) -> torch.Tensor:
     """Body positions relative to (robot) anchor frame."""
     robot_state = env_states.robots[env.name]
 
-    num_bodies = len(cmd.cfg.body_names)
+    num_bodies = len(env.commands.cfg.body_names)
     pos_b, _ = subtract_frame_transforms(
         robot_state.root_state[:, None, :3].repeat(1, num_bodies, 1),
         robot_state.root_state[:, None, 3:7].repeat(1, num_bodies, 1),
@@ -23,11 +22,11 @@ def robot_body_pos_b(env: EnvTypes, env_states: TensorState, cmd: MotionCommand)
     return pos_b.view(env.num_envs, -1)  # [n_envs, n_bodies * 3]
 
 
-def robot_body_ori_b(env: EnvTypes, env_states: TensorState, cmd: MotionCommand) -> torch.Tensor:
+def robot_body_ori_b(env: EnvTypes, env_states: TensorState) -> torch.Tensor:
     """Body orientations relative to anchor frame."""
     robot_state = env_states.robots[env.name]
 
-    num_bodies = len(cmd.cfg.body_names)
+    num_bodies = len(env.commands.cfg.body_names)
     _, ori_b = subtract_frame_transforms(
         robot_state.root_state[:, None, :3].repeat(1, num_bodies, 1),
         robot_state.root_state[:, None, 3:7].repeat(1, num_bodies, 1),
@@ -38,28 +37,28 @@ def robot_body_ori_b(env: EnvTypes, env_states: TensorState, cmd: MotionCommand)
     return mat[..., :2].reshape(mat.shape[0], -1)
 
 
-def motion_anchor_pos_b(env: EnvTypes, env_states: TensorState, cmd: MotionCommand) -> torch.Tensor:
+def motion_anchor_pos_b(env: EnvTypes, env_states: TensorState) -> torch.Tensor:
     """Target anchor position relative to anchor frame."""
     robot_state = env_states.robots[env.name]
 
     pos, _ = subtract_frame_transforms(
         robot_state.root_state[:, :3],
         robot_state.root_state[:, 3:7],
-        cmd.anchor_pos_w,
-        cmd.anchor_quat_w,
+        env.commands.anchor_pos_w,
+        env.commands.anchor_quat_w,
     )
 
     return pos.view(env.num_envs, -1)
 
 
-def motion_anchor_ori_b(env: EnvTypes, env_states: TensorState, cmd: MotionCommand) -> torch.Tensor:
+def motion_anchor_ori_b(env: EnvTypes, env_states: TensorState) -> torch.Tensor:
     robot_state = env_states.robots[env.name]
 
     _, ori = subtract_frame_transforms(
         robot_state.root_state[:, :3],  # [n_envs, 3]
         robot_state.root_state[:, 3:7],  # [n_envs, 4]
-        cmd.anchor_pos_w,  # [n_envs, 3]
-        cmd.anchor_quat_w,  # [n_envs, 4]
+        env.commands.anchor_pos_w,  # [n_envs, 3]
+        env.commands.anchor_quat_w,  # [n_envs, 4]
     )  # [n_envs, 4] quaternion representing the relative rotation between the two frames
     mat = matrix_from_quat(ori)  # [n_envs, 3, 3] convert to rotation matrix
     return mat[..., :2].reshape(mat.shape[0], -1)  # [n_envs, 6] extract the first two rows because the third row can be derived from orthogonality
@@ -67,11 +66,10 @@ def motion_anchor_ori_b(env: EnvTypes, env_states: TensorState, cmd: MotionComma
 
 # adapted from isaaclab.envs.mdp.observations.py
 
-def generated_commands(env: EnvTypes) -> torch.Tensor:
+def generated_commands(env: EnvTypes, env_states: TensorState) -> torch.Tensor:
     """The generated command from command term in the command manager with the given name."""
     # return env.command_manager.get_command(command_name)
-    # TODO return env.commands_manager.value
-    pass
+    return env.commands.command
 
 
 def base_lin_vel(env: EnvTypes, env_states: TensorState) -> torch.Tensor:

@@ -143,7 +143,7 @@ class WalkG1Dof29EnvCfg(BaseEnvCfg):
             {"position_range": (1.0, 1.0), "velocity_range": (-1.0, 1.0)},
         ),
     }
-    callbacks_post_step = {  # post_physics_step_callback
+    callbacks_post_step = {  # post_physics_step_callback / interval events
         "push_robot": (
             step_funcs.push_by_setting_velocity,
             {

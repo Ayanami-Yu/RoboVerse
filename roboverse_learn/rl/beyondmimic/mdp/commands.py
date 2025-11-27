@@ -8,7 +8,6 @@ from metasim.types import TensorState
 from metasim.utils import configclass
 from metasim.utils.math import (
     quat_apply,
-    wrap_to_pi,
     sample_uniform,
     quat_mul,
     yaw_quat,
@@ -20,8 +19,6 @@ from roboverse_learn.rl.beyondmimic.helper.string_utils import find_bodies
 
 
 # adapted from BeyondMimic commands.py
-# TODO find the post-physics step entry of RoboVerse and plug this in
-# NOTE entry at `LeggedRobotTask._post_physics_step()` -> `self.commands_manager.resample()`
 
 class MotionLoader:
     """Load motion data from a file and provide access to target joint states and body positions and orientations in world frame."""
@@ -109,25 +106,6 @@ class MotionCommand:
         metrics = ["error_anchor_pos", "error_anchor_rot", "error_anchor_lin_vel", "error_anchor_ang_vel", "error_body_pos", "error_body_rot", "error_joint_pos", "error_joint_vel", "sampling_entropy", "sampling_top1_prob", "sampling_top1_bin"]
         self.metrics = {k: torch.zeros(env.num_envs, device=env.device) for k in metrics}
 
-    def compute(self, dt: float):
-        """Compute the command.
-
-        Args:
-            dt: The time step passed since the last call to compute.
-        """
-        # update the metrics based on current state
-        self._update_metrics()
-        # reduce the time left before resampling
-        self.time_left -= dt  # TODO check how the original superclass (`CommandTerm `) is initialized
-        # resample the command if necessary
-        resample_env_ids = (self.time_left <= 0.0).nonzero().flatten()
-        if len(resample_env_ids) > 0:
-            self._resample(resample_env_ids)
-        # update the command
-        self._update_command()
-
-    # TODO adapt all the self attributes
-
     def _adaptive_sampling(self, env_ids: Sequence[int]):
         episode_failed = self.env.terminated_buf[env_ids]
         if torch.any(episode_failed):
@@ -197,12 +175,6 @@ class MotionCommand:
         joint_pos[env_ids] = torch.clip(
             joint_pos[env_ids], soft_joint_pos_limits[:, :, 0], soft_joint_pos_limits[:, :, 1]
         )
-        # TODO check whether writing to sim is done elsewhere and consider removing this
-        # self.robot.write_joint_state_to_sim(joint_pos[env_ids], joint_vel[env_ids], env_ids=env_ids)
-        # self.robot.write_root_state_to_sim(
-        #     torch.cat([root_pos[env_ids], root_ori[env_ids], root_lin_vel[env_ids], root_ang_vel[env_ids]], dim=-1),
-        #     env_ids=env_ids,
-        # )
         env_states.robots[self.env.name].joint_pos[env_ids] = joint_pos[env_ids]
         env_states.robots[self.env.name].joint_vel[env_ids] = joint_vel[env_ids]
         env_states.robots[self.env.name].root_state[env_ids, :] = torch.cat([root_pos[env_ids], root_ori[env_ids], root_lin_vel[env_ids], root_ang_vel[env_ids]], dim=-1)
@@ -213,6 +185,8 @@ class MotionCommand:
         self.time_steps += 1
         env_ids = torch.where(self.time_steps >= self.motion.time_step_total)[0]
         self._resample_command(env_ids, env_states)  # resample when motion ends
+
+        # TODO clear metric values?
 
         robot_state = env_states.robots[self.env.name]
 
@@ -237,7 +211,7 @@ class MotionCommand:
         )
         self._current_bin_failed.zero_()
 
-    def _update_metrics(self, ):
+    def _update_metrics(self):
         """Update metrics for logging."""
         self.metrics["error_anchor_pos"] = torch.norm(self.anchor_pos_w - self.robot_anchor_pos_w, dim=-1)
         self.metrics["error_anchor_rot"] = quat_error_magnitude(self.anchor_quat_w, self.robot_anchor_quat_w)
@@ -260,6 +234,27 @@ class MotionCommand:
 
         self.metrics["error_joint_pos"] = torch.norm(self.joint_pos - self.robot_joint_pos, dim=-1)
         self.metrics["error_joint_vel"] = torch.norm(self.joint_vel - self.robot_joint_vel, dim=-1)
+
+    def reset(self, env_ids: Sequence[int] | None = None):
+        if env_ids is None:
+            env_ids = torch.arange(self.env.num_envs, dtype=torch.int64, device=self.device)
+        if len(env_ids) != 0:
+            # resample the time left before resampling (will be used by `compute()`)
+            self.time_left[env_ids] = self.time_left[env_ids].uniform_(*self.cfg.resampling_time_range)
+            self._resample_command(env_ids, self.env.handler.get_states())  # TODO is using `get_states()` here correct?
+
+    def compute(self):
+        """Compute the command."""
+        # update the metrics based on current state
+        self._update_metrics()
+        # reduce the time left before resampling by the timestep passed since the last call
+        self.time_left -= self.env.step_dt
+        # resample the command if necessary
+        resample_env_ids = (self.time_left <= 0.0).nonzero().flatten()
+        if len(resample_env_ids) > 0:
+            self._resample(resample_env_ids)
+        # update the command
+        self._update_command()
 
     @property
     def command(self) -> torch.Tensor:

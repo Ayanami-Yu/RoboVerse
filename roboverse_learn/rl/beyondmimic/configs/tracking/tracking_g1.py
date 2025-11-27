@@ -14,14 +14,13 @@ from roboverse_learn.rl.beyondmimic.configs.cfg_randomizers import (
     MaterialRandomizer,
     MassRandomizer,
 )
-from roboverse_learn.rl.beyondmimic.helper.motion_utils import MotionCommand, MotionCommandCfg  # TODO
-from roboverse_learn.rl.beyondmimic.configs.callback_funcs import (
-    termination_funcs,
-    reset_funcs,
-    step_funcs,
-    reward_funcs,
-    observation_funcs as obs_funcs,
-    event_funcs,
+from roboverse_learn.rl.beyondmimic.mdp.commands import MotionCommandCfg
+from roboverse_learn.rl.beyondmimic.mdp import (
+    events,
+    terminations,
+    rewards,
+    observations,
+    events,
 )
 
 
@@ -54,54 +53,58 @@ class RewTerm(CfgTerm):
     weight: float
 
 
-# TODO add `cmd` as a default param to the functions
 @configclass
 class ObservationsCfg:
-    # TODO add `mdp.generated_commands` from BeyondMimic?
+
     @configclass
     class PolicyCfg:
-        command = ObsTerm(func=obs_funcs.generated_commands)  # TODO
-        motion_anchor_pos_b = ObsTerm(func=obs_funcs.motion_anchor_pos_b, noise_range=(-0.25, 0.25))
-        motion_anchor_ori_b = ObsTerm(func=obs_funcs.motion_anchor_ori_b, noise_range=(-0.05, 0.05))
-        base_lin_vel = ObsTerm(func=obs_funcs.base_lin_vel, noise_range=(-0.5, 0.5))
-        base_ang_vel = ObsTerm(func=obs_funcs.base_ang_vel, noise_range=(-0.2, 0.2))
-        joint_pos = ObsTerm(func=obs_funcs.joint_pos_rel, noise_range=(-0.01, 0.01))
-        joint_vel = ObsTerm(func=obs_funcs.joint_vel_rel, noise_range=(-0.5, 0.5))
-        actions = ObsTerm(func=obs_funcs.last_action)  # TODO
+        command = ObsTerm(func=observations.generated_commands)
+        motion_anchor_pos_b = ObsTerm(func=observations.motion_anchor_pos_b, noise_range=(-0.25, 0.25))
+        motion_anchor_ori_b = ObsTerm(func=observations.motion_anchor_ori_b, noise_range=(-0.05, 0.05))
+        base_lin_vel = ObsTerm(func=observations.base_lin_vel, noise_range=(-0.5, 0.5))
+        base_ang_vel = ObsTerm(func=observations.base_ang_vel, noise_range=(-0.2, 0.2))
+        joint_pos = ObsTerm(func=observations.joint_pos_rel, noise_range=(-0.01, 0.01))
+        joint_vel = ObsTerm(func=observations.joint_vel_rel, noise_range=(-0.5, 0.5))
+        actions = ObsTerm(func=observations.last_action)
 
     @configclass
     class PrivilegedCfg:
-        command = ObsTerm(func=obs_funcs.generated_commands)  # TODO
-        motion_anchor_pos_b = ObsTerm(func=obs_funcs.motion_anchor_pos_b)
-        motion_anchor_ori_b = ObsTerm(func=obs_funcs.motion_anchor_ori_b)
-        body_pos = ObsTerm(func=obs_funcs.robot_body_pos_b)
-        body_ori = ObsTerm(func=obs_funcs.robot_body_ori_b)
-        base_lin_vel = ObsTerm(func=obs_funcs.base_lin_vel)
-        base_ang_vel = ObsTerm(func=obs_funcs.base_ang_vel)
-        joint_pos = ObsTerm(func=obs_funcs.joint_pos_rel)
-        joint_vel = ObsTerm(func=obs_funcs.joint_vel_rel)
-        actions = ObsTerm(func=obs_funcs.last_action)  # TODO
+        command = ObsTerm(func=observations.generated_commands)
+        motion_anchor_pos_b = ObsTerm(func=observations.motion_anchor_pos_b)
+        motion_anchor_ori_b = ObsTerm(func=observations.motion_anchor_ori_b)
+        body_pos = ObsTerm(func=observations.robot_body_pos_b)
+        body_ori = ObsTerm(func=observations.robot_body_ori_b)
+        base_lin_vel = ObsTerm(func=observations.base_lin_vel)
+        base_ang_vel = ObsTerm(func=observations.base_ang_vel)
+        joint_pos = ObsTerm(func=observations.joint_pos_rel)
+        joint_vel = ObsTerm(func=observations.joint_vel_rel)
+        actions = ObsTerm(func=observations.last_action)
 
+    # observation groups
     policy = PolicyCfg()
     critic = PrivilegedCfg()
 
 
 @configclass
-class RewardsCfg:  # TODO check how reward weight is used in unitree_rl (weight * func_return_value * sim_dt?)
-    motion_global_anchor_pos = RewTerm(func=reward_funcs.motion_global_anchor_position_error_exp, weight=0.5, params={"std": 0.3})
-    motion_global_anchor_ori = RewTerm(func=reward_funcs.motion_global_anchor_orientation_error_exp, weight=0.5, params={"std": 0.4})
-    motion_body_pos = RewTerm(func=reward_funcs.motion_relative_body_position_error_exp, weight=1.0, params={"std": 0.3})
-    motion_body_ori = RewTerm(func=reward_funcs.motion_relative_body_orientation_error_exp, weight=1.0, params={"std": 0.4})
-    motion_body_lin_vel = RewTerm(func=reward_funcs.motion_global_body_linear_velocity_error_exp, weight=1.0, params={"std": 1.0})
-    motion_body_ang_vel = RewTerm(func=reward_funcs.motion_global_body_angular_velocity_error_exp, weight=1.0, params={"std": 3.14})
-    action_rate_l2 = RewTerm(func=reward_funcs.action_rate_l2, weight=0.05, params={"std": 3.14})
-    joint_limit = RewTerm(func=reward_funcs.joint_pos_limits, weight=-10.0)
-    undesired_contacts = RewTerm(func=reward_funcs.undesired_contacts, weight=-0.1, params={"threshold": 1, "body_names": [r"^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)(?!left_wrist_yaw_link$)(?!right_wrist_yaw_link$).+$"]})  # TODO check if `body_names` is correctly parsed
+class RewardsCfg:
+    motion_global_anchor_pos = RewTerm(func=rewards.motion_global_anchor_position_error_exp, weight=0.5, params={"std": 0.3})
+    motion_global_anchor_ori = RewTerm(func=rewards.motion_global_anchor_orientation_error_exp, weight=0.5, params={"std": 0.4})
+    motion_body_pos = RewTerm(func=rewards.motion_relative_body_position_error_exp, weight=1.0, params={"std": 0.3})
+    motion_body_ori = RewTerm(func=rewards.motion_relative_body_orientation_error_exp, weight=1.0, params={"std": 0.4})
+    motion_body_lin_vel = RewTerm(func=rewards.motion_global_body_linear_velocity_error_exp, weight=1.0, params={"std": 1.0})
+    motion_body_ang_vel = RewTerm(func=rewards.motion_global_body_angular_velocity_error_exp, weight=1.0, params={"std": 3.14})
+    action_rate_l2 = RewTerm(func=rewards.action_rate_l2, weight=0.05, params={"std": 3.14})
+    joint_limit = RewTerm(func=rewards.joint_pos_limits, weight=-10.0)
+    undesired_contacts = RewTerm(func=rewards.undesired_contacts, weight=-0.1, params={"threshold": 1, "body_names": [r"^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)(?!left_wrist_yaw_link$)(?!right_wrist_yaw_link$).+$"]})  # TODO check if `body_names` is correctly parsed
 
 
 @configclass
-class CommandsCfg:
-    motion = MotionCommandCfg(
+class TrackingG1EnvCfg(BaseEnvCfg):
+    """Environment configuration for humanoid motion tracking task."""
+
+    control = BaseEnvCfg.Control(action_scale=0.25, soft_joint_pos_limit_factor=0.9)
+
+    commands = MotionCommandCfg(
         anchor_body_name="torso_link",
         body_names=[  # for indexing motion body links
             "pelvis",
@@ -131,68 +134,40 @@ class CommandsCfg:
         velocity_range=VELOCITY_RANGE,
         joint_position_range=(-0.1, 0.1),
     )
-
-
-@configclass
-class TrackingG1EnvCfg(BaseEnvCfg):
-    """Environment configuration for humanoid motion tracking task."""
-
-    episode_length_s = 10.0
-    # TODO check these two values in BeyondMimic
-    obs_len_history = 5
-    priv_obs_len_history = 5
-
-    control = BaseEnvCfg.Control(action_scale=0.25, soft_joint_pos_limit_factor=0.9)
-
-    observations = ObservationsCfg()  # TODO
+    observations = ObservationsCfg()  # TODO compute obs
     rewards = RewardsCfg()
 
     # NOTE extra obs will be included in `env_states.extras["contact_forces"]`
     callbacks_query = {"contact_forces": ContactForces(history_length=3)}
-    callbacks_setup = {  # TODO check if these physics params have the same effect in both Isaac Lab and Metasim
+    # TODO check if these physics params have the same effect in both Isaac Lab and Metasim
+    callbacks_setup = {
         "material_randomizer": MaterialRandomizer(
             obj_name="g1_dof29",
             static_friction_range=(0.3, 1.6),
             dynamic_friction_range=(0.3, 1.2),
-            restitution_range=(0.0, 0.0),
+            restitution_range=(0.0, 0.5),
             num_buckets=64,
         ),
         # TODO change `MassRandomizer` to `randomize_rigid_body_com()` from BeyondMimic
         "mass_randomizer": MassRandomizer(
             obj_name="g1_dof29",
             body_names="torso_link",
-            mass_distribution_params=(-1.0, 3.0),
+            mass_distribution_params=(-1.0, 3.0),  # TODO change this
             operation="add",
         ),
         # NOTE `env` will be passed to the functions inside `AgentTask._bind_callbacks()`
         "add_joint_default_pos": (
-            event_funcs.randomize_joint_default_pos,
+            events.randomize_joint_default_pos,
             {
                 "pos_distribution_params": (-0.01, 0.01),
                 "operation": "add",
             }
         ),
     }
-    callbacks_reset = {
-        "random_root_state": (
-            reset_funcs.random_root_state,
-            {
-                "pose_range": [
-                    [-0.5, -0.5, 0.0, 0, 0, -3.14],  # x,y,z roll,pitch,yaw
-                    [0.5, 0.5, 0.0, 0, 0, 3.14],
-                ],
-                "velocity_range": [[0] * 6, [0] * 6],
-            },
-        ),
-        "reset_joints_by_scale": (
-            reset_funcs.reset_joints_by_scale,
-            {"position_range": (1.0, 1.0), "velocity_range": (-1.0, 1.0)},
-        ),
-    }
     callbacks_post_step = {
         # TODO slightly different from BeyondMimic – check if this works
         "push_robot": (
-            step_funcs.push_by_setting_velocity,
+            events.push_by_setting_velocity,
             {
                 "interval_range_s": (1.0, 3.0),
                 "velocity_range": VELOCITY_RANGE,
@@ -200,16 +175,11 @@ class TrackingG1EnvCfg(BaseEnvCfg):
         )
     }
     callbacks_terminate = {
-        "time_out": termination_funcs.time_out,
-        "base_height": (
-            termination_funcs.root_height_below_minimum,
-            {"minimum_height": 0.2},
-        ),
-        "bad_orientation": (termination_funcs.bad_orientation, {"limit_angle": 0.8}),
+        "time_out": terminations.time_out,
+        "anchor_pos": (terminations.bad_anchor_pos_z_only, {"threshold": 0.25}),
+        "anchor_ori": (terminations.bad_anchor_ori, {"threshold": 0.8}),
+        "ee_body_pos": (terminations.bad_motion_body_pos_z_only, {"threshold": 0.25, "body_names": ["left_ankle_roll_link", "right_ankle_roll_link", "left_wrist_yaw_link", "right_wrist_yaw_link"]}),
     }
-
-    def __post_init__(self, motion_file: str, scenario: ScenarioCfg, resample: Callable, device: str):
-        self.commands = MotionCommand(motion_file, scenario, resample, device)  # TODO
 
 
 @configclass

@@ -31,7 +31,7 @@ class LeggedRobotTask(AgentTask):
     ) -> None:
         super().__init__(scenario=scenario, config=config, device=device)  # NOTE bind callbacks here
         self.name = self.robot.name if hasattr(self, "robot") else getattr(self, "name", None)
-        self.num_actions = len(self.robot.actuators)
+        self.num_actions = len(self.robot.actuators)  # n_dofs
         self.sim_dt = self.scenario.sim_params.dt
         # TODO is `body_names` encapsulated by handler? but MotionCommand needs to specify a subset of it
         self.sorted_body_names = self.handler.get_body_names(self.name, sort=True)  # [30]  # TODO check this
@@ -41,7 +41,7 @@ class LeggedRobotTask(AgentTask):
         self._init_joint_cfg()
         self._init_reward_function()
         self._init_buffers()
-        self.reset()
+        self.reset()  # reset at the start since the RSL-RL runner does not call reset
 
     def _compute_task_observations(self, env_states: TensorState) -> tuple[torch.Tensor, torch.Tensor | None]:
         """Return (policy_obs, privileged_obs). Implemented by subclasses."""
@@ -252,7 +252,9 @@ class LeggedRobotTask(AgentTask):
         effort = torch.clip(effort, -self.torque_limits, self.torque_limits)
         return effort.to(torch.float32)
 
-    def reset(self, env_ids: torch.Tensor | list[int] | None = None):
+    def reset(
+        self, env_ids: torch.Tensor | list[int] | None = None
+    ):  # NOTE called both in `__init__()` and `_post_physics_step()`
         """Reset selected envs (defaults to all)."""
         if env_ids is None:
             env_ids = torch.tensor(list(range(self.num_envs)), device=self.device)
@@ -272,7 +274,7 @@ class LeggedRobotTask(AgentTask):
             for item in history:
                 item[env_ids] = 0.0
         self._episode_steps[env_ids] = 0
-        self.actions[env_ids] = 0.0
+        self.actions[env_ids] = 0.0  # NOTE updated in `step()`
         self.rew_buf[env_ids] = 0.0
 
         # reset observation history buffers
@@ -342,7 +344,7 @@ class LeggedRobotTask(AgentTask):
         reset_env_idx = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         if len(reset_env_idx) > 0:
             self.reset(env_ids=reset_env_idx)
-
+        # NOTE in Isaac Lab, all components' resets are done in the env class' `reset()`, but here resetting commands is done in the following line
         self.commands_manager.resample(self)
 
         ####### Compute observations after resets ########
@@ -357,14 +359,14 @@ class LeggedRobotTask(AgentTask):
         # copy to the history buffer
         for key, history in self.history_buffer.items():
             if hasattr(self, key):
-                history.append(getattr(self, key).clone())
+                history.append(getattr(self, key).clone())  # NOTE `actions` here
             elif hasattr(env_states.robots[self.name], key):
                 history.append(getattr(env_states.robots[self.name], key).clone())
             else:
                 raise ValueError(f"History buffer key {key} not found in task or robot states.")
-
+        # NOTE the order of command, obs, and events here is different from Isaac Lab, is this wrong?
         for _step_fn, _params in self.post_physics_step_callback.values():
-            _step_fn(self, env_states, **_params)
+            _step_fn(self, env_states, **_params)  # only `push_by_setting_velocity()`
 
     def _reward(self, env_states):
         rew_buf = torch.zeros(self.num_envs, dtype=torch.float, device=self.device)

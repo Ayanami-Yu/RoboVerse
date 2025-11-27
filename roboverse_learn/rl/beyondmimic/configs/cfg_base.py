@@ -17,16 +17,15 @@ class CallbacksCfg:
 
 @configclass
 class BaseEnvCfg:
-    """
-    The base class of environment configuration for legged robots.
-    """
+    """The base class of environment configuration for legged robots."""
 
-    episode_length_s = 20.0
+    episode_length_s = 10.0
+    # TODO maybe keep the history buf since we can set it to 0?
     obs_len_history = 0  # number of past observations to include in the observation
     priv_obs_len_history = 0  # number of past privileged observations to include in the privileged observation
 
     @configclass
-    class Control:
+    class Control:  # TODO change these values following BeyondMimic
         torque_limits_factor: float = 1.0  # scale torque limits from urdf
         soft_joint_pos_limit_factor: float = 1.0  # scale dof pos limits from urdf
         action_clip: float = 100.0
@@ -35,26 +34,6 @@ class BaseEnvCfg:
         decimation = 4
 
     control = Control()
-
-    @configclass
-    class Commands:
-        @configclass
-        class Ranges:
-            lin_vel_x = [-1.0, 1.0]  # min max [m/s]
-            lin_vel_y = [-1.0, 1.0]  # min max [m/s]
-            ang_vel_yaw = [-1, 1]  # min max [rad/s]
-            heading = [-3.14, 3.14]  # TODO what is this used for?
-
-        num_commands = 3  # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
-        resampling_time = 10.0  # time before commands are changed [s]
-        heading_command = True  # if true: compute ang vel command from heading error
-        rel_standing_envs: float = 0
-        ranges = Ranges()
-        limit_ranges = Ranges()
-        resample: Callable = MISSING
-        value: any = MISSING
-
-    commands = Commands()
 
     @configclass
     class Curriculum:

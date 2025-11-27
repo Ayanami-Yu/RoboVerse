@@ -14,7 +14,7 @@ from roboverse_learn.rl.beyondmimic.helper import (
     get_axis_params,
     pattern_match,
 )
-from roboverse_learn.rl.beyondmimic.helper.motion_utils import MotionCommand
+from roboverse_learn.rl.beyondmimic.mdp.commands import MotionCommand
 from roboverse_pack.robots import G1Dof12Cfg, Go2Cfg
 
 from .base_agent import AgentTask
@@ -38,11 +38,11 @@ class LeggedRobotTask(AgentTask):
 
         self._instantiate_cfg(self.cfg)
         self._init_joint_cfg()
-        self._init_reward_function()
+        self._init_episode_rewards()
         self._init_buffers()
         self.reset()
 
-    def _compute_task_observations(self, env_states: TensorState) -> tuple[torch.Tensor, torch.Tensor | None]:
+    def _observation(self, env_states: TensorState) -> tuple[torch.Tensor, torch.Tensor | None]:
         """Return (policy_obs, privileged_obs). Implemented by subclasses."""
         raise NotImplementedError
 
@@ -55,8 +55,7 @@ class LeggedRobotTask(AgentTask):
         self.action_scale = self.cfg.control.action_scale
 
         self.common_step_counter = 0
-        self.commands_manager = self.cfg.commands
-        # self.reward_scales = asdict(self.cfg.rewards.scales)
+        self.commands = self.cfg.commands
 
     def _init_joint_cfg(self):
         """Parse default joint positions and torque limits from cfg."""
@@ -140,37 +139,12 @@ class LeggedRobotTask(AgentTask):
         """Apply pre-physics callbacks."""
         for pre_fn, _params in self.pre_physics_step_callback.values():
             pre_fn(self, **_params)
+        # NOTE corresponds to action clipping in `RslRlVecEnvWrapper.step()` in Isaac Lab
         return torch.clip(actions, -self.action_clip, self.action_clip)
 
-    def _init_reward_function(self):
-        """Prepares a list of reward functions, which will be called to compute the total reward."""
-        # self.reward_functions = {}  # TODO check if removing this is ok
-        # for _key in self.reward_scales.keys():
-        #     if isinstance(self.reward_scales[_key], tuple):
-        #         if len(self.reward_scales[_key]) == 2:
-        #             scale, params = self.reward_scales[_key]
-        #             func = get_reward_fn(_key, self.cfg.rewards.functions)
-        #         elif len(self.reward_scales[_key]) == 3:
-        #             scale, params, func = self.reward_scales[_key]
-        #         else:
-        #             raise ValueError("Reward scale tuple must be (scale, params) or (scale, params, func).")
-        #     elif isinstance(self.reward_scales[_key], (int, float)):
-        #         scale, params, func = self.reward_scales[_key], {}, get_reward_fn(_key, self.cfg.rewards.functions)
-        #     else:
-        #         raise ValueError("Reward scale must be a number, a tuple (scale, params) or (scale, params, func).")
-
-        #     # check types
-        #     assert isinstance(scale, (int, float)), "Reward scale must be a number."
-        #     assert isinstance(params, dict), "Reward params must be a dictionary."
-        #     assert callable(func), "Reward function must be callable."
-        #     if scale == 0:
-        #         self.reward_scales.pop(_key)
-        #     else:
-        #         self.reward_scales[_key] = (scale * self.step_dt, params)
-        #         self.reward_functions[_key] = func
-
+    def _init_episode_rewards(self):
+        """Prepare episode rewards for logging in `reset()`."""
         # reward episode sums
-        # NOTE used for logging in `reset()`
         self.episode_rewards = {
             name: torch.zeros(
                 self.num_envs,
@@ -188,39 +162,28 @@ class LeggedRobotTask(AgentTask):
             device=self.device,
         )
         self.actions_offset = self.default_dof_pos.clone() if self.cfg.control.action_offset else 0.0
-        self.rew_buf = torch.zeros(size=(self.num_envs,), dtype=torch.float, device=self.device)
-        self.reset_buf = torch.zeros(size=(self.num_envs,), dtype=torch.bool, device=self.device)
-        # self.time_out_buf = torch.zeros(size=(self.num_envs,), dtype=torch.bool, device=self.device)
 
+        self.rew_buf = torch.zeros(size=(self.num_envs,), dtype=torch.float, device=self.device)
+        self.reset_buf = torch.zeros(
+            size=(self.num_envs,), dtype=torch.bool, device=self.device
+        )  # both time-out and reset
+        # self.time_out_buf = torch.zeros(size=(self.num_envs,), dtype=torch.bool, device=self.device)  # TODO remove this
+
+        # set gravity vector
         self.up_axis_idx = 2
         self.gravity_vec = torch.tensor(
             get_axis_params(-1.0, self.up_axis_idx),
             dtype=torch.float,
             device=self.device,
         ).repeat((self.num_envs, 1))
-        self.forward_vec = torch.tensor([1.0, 0.0, 0.0], dtype=torch.float, device=self.device).repeat((
-            self.num_envs,
-            1,
-        ))
 
-        self.commands_manager.resample(self)
+        # reset commands
+        self.commands.reset()
 
-        # for observation history
-        env_states = self.handler.get_states()
-        obs_single, priv_single = self._compute_task_observations(env_states)  # TODO
-        self.obs_buf_queue = deque(
-            [deepcopy(obs_single * 0.0) for _ in range(self.cfg.obs_len_history)],
-            maxlen=self.cfg.obs_len_history,
-        )
-        self.priv_obs_buf_queue = deque(
-            [deepcopy(priv_single * 0.0) for _ in range(self.cfg.priv_obs_len_history)],
-            maxlen=self.cfg.priv_obs_len_history,
-        )
-
-        # history buffer for reward computation
+        # history buffer (action) for reward computation
         self.history_buffer = {}
         self.history_buffer["actions"] = deque([self.actions.clone() * 0.0], maxlen=2)
-        self.history_buffer["joint_vel"] = deque([self.actions.clone() * 0.0], maxlen=2)
+        # self.history_buffer["joint_vel"] = deque([self.actions.clone() * 0.0], maxlen=2)  # TODO remove this
 
         # for logs
         self.episode_not_terminations = {
@@ -265,13 +228,14 @@ class LeggedRobotTask(AgentTask):
         self.actions[env_ids] = 0.0
         self.rew_buf[env_ids] = 0.0
 
-        # reset observation history buffers
-        for _obs in self.obs_buf_queue:
-            _obs[env_ids] = 0.0
-        for _priv_obs in self.priv_obs_buf_queue:
-            _priv_obs[env_ids] = 0.0
+        # reset observation history buffers  # TODO remove this
+        # for _obs in self.obs_buf_queue:
+        #     _obs[env_ids] = 0.0
+        # for _priv_obs in self.priv_obs_buf_queue:
+        #     _priv_obs[env_ids] = 0.0
 
         # log
+        # TODO adapt metrics of `MotionCommand` to this
         for key in self.episode_rewards.keys():
             self.extras["episode"]["Episode_Reward/" + key] = (
                 torch.mean(self.episode_rewards[key][env_ids]) / self.cfg.episode_length_s
@@ -327,22 +291,28 @@ class LeggedRobotTask(AgentTask):
         self.rew_buf[:] = self._reward(env_states)
 
         # reset envs
-        reset_env_idx = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
-        if len(reset_env_idx) > 0:
-            self.reset(env_ids=reset_env_idx)  # call reset functions in reset_funcs.py
+        reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
+        if len(reset_env_ids) > 0:
+            self.reset(env_ids=reset_env_ids)  # call reset functions
+            self.commands.reset(env_ids=reset_env_ids)  # TODO
 
-        self.commands_manager.resample(self)
+        # update commands
+        self.commands.compute()
 
-        ####### Compute observations after resets ########
-        obs_single, priv_single = self._compute_task_observations(env_states)
+        # interval events
+        for _step_fn, _params in self.post_physics_step_callback.values():
+            _step_fn(self, env_states, **_params)
+
+        # compute observations after resets
+        obs_single, priv_single = self._observation(env_states)
         # append to the observation history buffer
         self.obs_buf_queue.append(obs_single)
         # append to the privileged observation history buffer
         if priv_single is not None and self.priv_obs_buf_queue.maxlen > 0:
             self.priv_obs_buf_queue.append(priv_single)
-        ####### Compute observations after resets ########
 
         # copy to the history buffer
+        # TODO BeyondMimic doesn't use history, remove it
         for key, history in self.history_buffer.items():
             if hasattr(self, key):
                 history.append(getattr(self, key).clone())
@@ -351,15 +321,11 @@ class LeggedRobotTask(AgentTask):
             else:
                 raise ValueError(f"History buffer key {key} not found in task or robot states.")
 
-        for _step_fn, _params in self.post_physics_step_callback.values():
-            _step_fn(self, env_states, **_params)
-
     def _reward(self, env_states: TensorState, cmd: MotionCommand):
         rew_buf = torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
         for name, term_cfg in asdict(self.cfg.rewards).items():
-            value = (
-                term_cfg.func(self, env_states, cmd=cmd, **term_cfg.params) * term_cfg.weight * self.step_dt
-            )  # TODO multiply `step_dt` or not
+            # TODO multiply `step_dt` or not
+            value = term_cfg.func(self, env_states, **term_cfg.params) * term_cfg.weight * self.step_dt
             rew_buf += value  # update total reward
             self.episode_rewards[name] += value  # update episodic sum
 
@@ -388,10 +354,9 @@ class LeggedRobotTask(AgentTask):
         sorted_joint_names = self.handler.get_joint_names(self.robot.name, sort=True)
 
         robot_state = self.cfg.initial_states.robots[self.robot.name]
-        pos = robot_state.get("pos", [0.0, 0.0, 0.5])
+        pos = robot_state.get("pos", [0.0, 0.0, 0.5])  # TODO verify the default values
         rot = robot_state.get("rot", [1.0, 0.0, 0.0, 0.0])
 
-        # joint_pos = self.robot.default_joint_positions
         joint_pos = robot_state.get(
             "joint_pos",
             robot_state.get("default_joint_pos", self.robot.default_joint_positions),

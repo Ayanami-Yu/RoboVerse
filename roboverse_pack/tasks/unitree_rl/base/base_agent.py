@@ -90,7 +90,7 @@ class AgentTask(RLTaskEnv):
 
     def _physics_step(self, actions: Action) -> TensorState:
         """Issue low-level actions and simulate one physics step."""
-        self.handler.set_dof_targets(actions)
+        self.handler.set_dof_targets(actions)  # NOTE corresponds to alphabetical joint order
         self.handler.simulate()  # decimation control in task_env level
         return self.handler.get_states()
 

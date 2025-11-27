@@ -17,11 +17,9 @@ from metasim.scenario.scenario import ScenarioCfg
 from metasim.task.registry import get_task_class
 
 from roboverse_pack.tasks.beyondmimic.base.types import EnvTypes
-from roboverse_learn.rl.beyondmimic.helper import (get_args, make_objects, get_log_dir,
-                                                  make_robots, set_seed, get_load_path,
-                                                  PolicyExporterLSTM, export_policy_as_jit,
-                                                  get_export_jit_path)
 from roboverse_learn.rl.beyondmimic.runners import EnvWrapperTypes, MasterRunner
+from roboverse_learn.rl.beyondmimic.helper import get_args, make_objects, get_log_dir, make_robots, set_seed, get_load_path, PolicyExporterLSTM, export_policy_as_jit, get_export_jit_path
+
 
 def prepare(args):
     task_cls = get_task_class(args.task)
@@ -99,10 +97,11 @@ def play(args):
 
 
     for i in range(1000000):
+        # TODO load reference motions as commands and remove this
         # set fixed command
-        env_0.commands_manager.value[:, 0] = 0.5
-        env_0.commands_manager.value[:, 1] = 0.0
-        env_0.commands_manager.value[:, 2] = 0.0
+        # env_0.commands.value[:, 0] = 0.5
+        # env_0.commands.value[:, 1] = 0.0
+        # env_0.commands.value[:, 2] = 0.0
         actions = policy_0(obs)
         obs, _, _, _ = envwrapper_0.step(actions)
 
