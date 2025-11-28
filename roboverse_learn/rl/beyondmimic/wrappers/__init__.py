@@ -1,6 +1,7 @@
 from typing import Union
 
 from .master import MasterRunner
-from .rsl_rl import RslRlEnvWrapper, RslRlWrapper
+from .environment import RslRlEnvWrapper
+from .runners import RslRlWrapper
 
 EnvWrapperTypes = Union[RslRlEnvWrapper]

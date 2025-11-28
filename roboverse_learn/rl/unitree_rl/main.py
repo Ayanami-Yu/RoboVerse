@@ -60,9 +60,9 @@ def prepare(args):
 
     return master_runner
 
-def play(args):
+def play(args):  # TODO check the runner class used in eval
     master_runner = prepare(args)
-    name_0 = list(master_runner.runners.keys())[0]
+    name_0 = list(master_runner.runners.keys())[0]  # FIXME what's the point in providing possibility of running multiple runners if we always retrieve the first one?  # "g1_dof29"
     if args.resume:
         if args.jit_load:
             log_dir = get_log_dir(task_name=master_runner.task_name, now=args.resume)

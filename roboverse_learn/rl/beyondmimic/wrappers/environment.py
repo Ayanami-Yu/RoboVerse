@@ -1,14 +1,14 @@
 from __future__ import annotations
+
 from typing import Union
 import torch
 from tensordict import TensorDict
 
-from roboverse_pack.tasks.beyondmimic.base import AgentTask
-from .master import BaseRunnerWrapper
+from roboverse_pack.tasks.beyondmimic.base import EnvTypes
 
 
 class RslRlEnvWrapper:
-    def __init__(self, env: AgentTask, train_cfg: dict | object=None):
+    def __init__(self, env: EnvTypes, train_cfg: dict | object = None):
         self.env = env
         self.train_cfg = train_cfg
 
@@ -49,28 +49,4 @@ class RslRlEnvWrapper:
 
     @property
     def obs_buf(self) -> TensorDict:
-        return TensorDict(policy=self.env.obs_buf,
-                          critic=self.env.priv_obs_buf)
-
-
-class RslRlWrapper(BaseRunnerWrapper):
-    def __init__(self, env: AgentTask, train_cfg: dict, log_dir:str):
-        super().__init__(env, train_cfg, log_dir)
-        from rsl_rl.runners import OnPolicyRunner
-
-        self.env_wrapper = RslRlEnvWrapper(self.env)
-        self.runner = OnPolicyRunner(
-            env=self.env_wrapper,
-            train_cfg=self.train_cfg,
-            device=self.device,
-            log_dir=log_dir,
-        )
-
-    def learn(self, max_iterations=30000):
-        self.runner.learn(num_learning_iterations=max_iterations, init_at_random_ep_len=True)
-
-    def load(self, path):
-        self.runner.load(path)
-
-    def get_policy(self):
-        return self.runner.get_inference_policy()
+        return TensorDict(policy=self.env.obs_buf, critic=self.env.priv_obs_buf)

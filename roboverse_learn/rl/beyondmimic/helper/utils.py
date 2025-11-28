@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from typing import Callable
 import re
 import os
 import copy
 import argparse
-import datetime
 import importlib
 from loguru import logger as log
 from functools import lru_cache
@@ -20,125 +18,51 @@ from metasim.scenario.scenario import ScenarioCfg
 from roboverse_pack.tasks.beyondmimic.base.types import EnvTypes
 
 
-def parse_arguments(description="humanoid rl task arguments", custom_parameters=None):
-    """Parse command line arguments."""
-    if custom_parameters is None:
-        custom_parameters = []
-    parser = argparse.ArgumentParser(description=description)
-    for argument in custom_parameters:
-        if ("name" in argument) and ("type" in argument or "action" in argument):
-            help_str = ""
-            if "help" in argument:
-                help_str = argument["help"]
+def get_args():
+    """Get the command line arguments."""
+    parser = argparse.ArgumentParser(description="Arguments for BeyondMimic motion tracking task")
+    parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate")
+    parser.add_argument("--task", type=str, default=None, help="Name of the task")
+    parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
+    parser.add_argument("--sim", type=str, default="isaacsim", help="Simulator type")
+    parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
 
-            if "type" in argument:
-                if "default" in argument:
-                    parser.add_argument(
-                        argument["name"],
-                        type=argument["type"],
-                        default=argument["default"],
-                        help=help_str,
-                    )
-                else:
-                    parser.add_argument(
-                        argument["name"], type=argument["type"], help=help_str
-                    )
-            elif "action" in argument:
-                parser.add_argument(
-                    argument["name"], action=argument["action"], help=help_str
-                )
+    # for logging
+    parser.add_argument(
+        "--exp_name", type=str, default=None, help="Name of the experiment folder where logs will be stored"
+    )
+    parser.add_argument("--run_name", type=str, default=None, help="Run name suffix to the log directory")
+    parser.add_argument(
+        "--logger", type=str, default=None, choices={"wandb", "tensorboard", "neptune"}, help="Logger module to use."
+    )
+    parser.add_argument(
+        "--log_project_name", type=str, default=None, help="Name of the logging project when using WandB or neptune"
+    )
 
-        else:
-            log.error(
-                "ERROR: command line argument name, type/action must be defined, argument not added to parser"
-            )
-            log.error("supported keys: name, type, default, action, help")
+    # for loading
+    parser.add_argument("--resume", type=bool, default=None, help="Whether to resume from a checkpoint. Should only be used for training")
+    parser.add_argument("--load_run", type=str, default=None, help="Name of the local folder to resume from if not using WandB")
+    parser.add_argument("--checkpoint", type=str, default=None, help="Checkpoint file to resume from if not using WandB. Format: model_xxx.pt")
+
+    # evaluation args
+    parser.add_argument("--eval", action="store_true", default=False, help="Run in evaluation mode")
+    parser.add_argument(
+        "--motion_file", type=str, default=None, help="Path to the local motion file"
+    )
+    parser.add_argument(
+        "--wandb_path", type=str, default=None, help="The WandB run path to load from. Format: org/project/run_id(/model_xxx.pt)"
+    )
+
+    # training args
+    parser.add_argument("--max_iterations", type=int, default=None, help="Max number of training iterations")
+    parser.add_argument("--registry_name", type=str, default=None, help="Name of the WandB registry")  # TODO should be required
 
     return parser.parse_args()
 
 
-def get_args(test=False):
-    """Get the command line arguments."""
-    custom_parameters = [
-        {
-            "name": "--task",
-            "type": str,
-            "default": "walk_g1_dof29",
-            "help": "Task name for training/testing.",
-        },
-        {"name": "--robots", "type": str, "default": "", "help": "The used robots."},
-        {
-            "name": "--objects",
-            "type": str,
-            "default": None,
-            "help": "The used objects.",
-        },
-        {
-            "name": "--num_envs",
-            "type": int,
-            "default": 128,
-            "help": "number of parallel environments.",
-        },
-        {
-            "name": "--iter",
-            "type": int,
-            "default": 15000,
-            "help": "Max number of training iterations.",
-        },
-        {
-            "name": "--sim",
-            "type": str,
-            "default": "isaacgym",
-            "help": "simulator type, currently only isaacgym is supported",
-        },
-        {
-            "name": "--headless",
-            "action": "store_true",
-            "default": True,
-            "help": "Force display off at all times",
-        },
-        {
-            "name": "--resume",
-            "type": str,
-            "default": None,
-            "help": "Resume training from a checkpoint",
-        },
-        {
-            "name": "--checkpoint",
-            "type": int,
-            "default": -1,
-            "help": "Saved model checkpoint number. If -1: will load the last checkpoint. Overrides config file if provided.",
-        },
-        {
-            "name": "--seed",
-            "type": int,
-            "default": -1,
-            "help": "The random seed for the run. If -1, will be randomly generated.",
-        },
-        {
-            "name": "--eval",
-            "action": "store_true",
-            "default": False,
-            "help": "Whether to run in eval mode",
-        },
-        {
-            "name": "--jit_load",
-            "action": "store_true",
-            "default": False,
-            "help": "Whether to load the JIT model",
-        },
-        # {"name": "--run_name", "type": str, "required": True if not test else False, "help": "Name of the run. Overrides config file if provided."},
-        # {"name": "--load_run", "type": str, "default": None, "help": "Path to the config file. If provided, will override command line arguments."},
-        # {"name": "--use_wandb", "action": "store_true", "default": True, "help": "Use wandb for logging"},
-        # {"name": "--wandb", "type": str, "default": "g1_walking", "help": "Wandb project name"},
-        # {"name": "--log", "type": str, "default": None, "help": "log directory. If None, will be set automatically."},
-    ]
-    args = parse_arguments(custom_parameters=custom_parameters)
-    return args
-
-
-def set_seed(seed=-1):
-    if seed == -1:
+def set_seed(seed: int | None = None):
+    """Seed will be randomly initialized if it's None."""
+    if not seed:
         seed = np.random.randint(0, 10000)
     log.info(f"Setting seed: {seed}")
 
@@ -148,17 +72,6 @@ def set_seed(seed=-1):
     os.environ["PYTHONHASHSEED"] = str(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-
-
-def get_log_dir(task_name: str, now=None) -> str:
-    """Get the log directory."""
-    if now is None:
-        now = datetime.datetime.now().strftime("%Y_%m%d_%H%M%S")
-    log_dir = f"./outputs/unitree_rl/{task_name}/{now}"
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir, exist_ok=True)
-    log.info("Log directory: {}", log_dir)
-    return log_dir
 
 
 def get_class(name: str, suffix: str, library="roboverse_learn.rl.beyondmimic"):
@@ -175,26 +88,6 @@ def get_class(name: str, suffix: str, library="roboverse_learn.rl.beyondmimic"):
     wrapper_module = importlib.import_module(library)
     wrapper_cls = getattr(wrapper_module, f"{task_name_camel}{suffix}")
     return wrapper_cls
-
-
-def get_load_path(load_root: str, checkpoint: int | str = None) -> str:
-    """Get the path to load the model from."""
-    if isinstance(checkpoint, int):
-        if checkpoint == -1:
-            models = [
-                file
-                for file in os.listdir(load_root)
-                if "model" in file and file.endswith(".pt")
-            ]
-            models.sort(key=lambda m: f"{m!s:0>15}")
-            model = models[-1]
-            load_path = f"{load_root}/{model}"
-        else:
-            load_path = f"{load_root}/model_{checkpoint}.pt"
-    else:
-        load_path = f"{load_root}/{checkpoint}.pt"
-    log.info(f"Loading checkpoint {checkpoint} from {load_root}")
-    return load_path
 
 
 def make_robots(robots_str: str) -> list[any]:
@@ -217,25 +110,6 @@ def make_objects(objects_str: str) -> list[any]:
             )()
         )
     return objects
-
-
-def find_unique_candidate(candidates: list[any], data_base: list[any]) -> int:
-    found_candidates = []
-    found_indexes = []
-
-    for candidate in candidates:
-        if candidate in data_base:
-            found_candidates.append(candidate)
-            found_indexes.append(data_base.index(candidate))
-
-    if len(found_candidates) == 0:
-        raise ValueError(f"None of the candidates {candidates} found in {data_base}")
-    elif len(found_candidates) > 1:
-        raise ValueError(
-            f"Multiple candidates found: {found_candidates}. Only one naming convention should be used."
-        )
-
-    return found_indexes[0]
 
 
 def get_indexes_from_substring(
@@ -267,7 +141,7 @@ def get_indexes_from_substring(
     ), "candidates_list must be a list, tuple or string."
 
     for candidate in candidates_list:
-        # Compile regex pattern for efficiency
+        # compile regex pattern for efficiency
         try:
             pattern = re.compile(candidate)
         except re.error as e:
@@ -279,9 +153,20 @@ def get_indexes_from_substring(
             elif not fullmatch and pattern.search(name):
                 found_indexes.append(i)
 
-    # Remove duplicates and sort
+    # remove duplicates and sort
     found_indexes = sorted(set(found_indexes))
     return torch.tensor(found_indexes, dtype=torch.int32, requires_grad=False)
+
+
+@lru_cache(maxsize=128)
+def hash_names(names: str | tuple[str]) -> str:
+    if isinstance(names, str):
+        names = (names,)
+    assert isinstance(names, tuple) and all(
+        isinstance(_, str) for _ in names
+    ), "body_names must be a string or a list of strings."
+    hash_key = "_".join(sorted(names))
+    return hash_key
 
 
 def get_indexes(
@@ -295,68 +180,6 @@ def get_indexes(
     return env.extras_buffer[hash_key]
 
 
-def reindex_func(
-    data: torch.Tensor, new_idx: torch.Tensor, start_idx: int | torch.Tensor
-) -> torch.Tensor:
-    assert data.dim() == 2, "data must be a 2D tensor"
-    assert new_idx.dim() == 1, "new_idx must be a 1D tensor"
-    reindex_length = len(new_idx)
-    for start in start_idx:
-        data[:, start : start + reindex_length] = data[
-            :, start : start + reindex_length
-        ][:, new_idx]
-    return data
-
-
-class PolicyExporterLSTM(torch.nn.Module):
-    def __init__(self, actor_critic):
-        super().__init__()
-        self.actor = copy.deepcopy(actor_critic.actor)
-        self.is_recurrent = actor_critic.is_recurrent
-        self.memory = copy.deepcopy(actor_critic.memory_a.rnn)
-        self.memory.cpu()
-        self.register_buffer(
-            "hidden_state",
-            torch.zeros(self.memory.num_layers, 1, self.memory.hidden_size),
-        )
-        self.register_buffer(
-            "cell_state",
-            torch.zeros(self.memory.num_layers, 1, self.memory.hidden_size),
-        )
-
-    def forward(self, x):
-        out, (h, c) = self.memory(x.unsqueeze(0), (self.hidden_state, self.cell_state))
-        self.hidden_state[:] = h
-        self.cell_state[:] = c
-        return self.actor(out.squeeze(0))
-
-    @torch.jit.export
-    def reset_memory(self):
-        self.hidden_state[:] = 0.0
-        self.cell_state[:] = 0.0
-
-    def export(self, path):
-        if not path.endswith(".pt"):
-            path = os.path.join(path, "policy.pt")
-        self.to("cpu")
-        traced_script_module = torch.jit.script(self)
-        traced_script_module.save(path)
-
-
-def export_policy_as_jit(actor, path, filename=None):
-    """Export the policy as a JIT model."""
-    model = copy.deepcopy(actor).to("cpu")
-    traced_script_module = torch.jit.script(model)
-    traced_script_module.save(path)
-
-
-def get_export_jit_path(load_root: str, scenario: ScenarioCfg) -> str:
-    """Get the path to export the JIT model."""
-    exported_root_dir = f"{load_root}/exported"
-    os.makedirs(exported_root_dir, exist_ok=True)
-    return f"{load_root}/exported/model_exported_jit.pt"
-
-
 def pattern_match(sub_names: dict[str, any], all_names: list[str]) -> dict[str, any]:
     """Pattern match the sub_names to all_names using regex."""
     matched_names = {_key: 0.0 for _key in all_names}
@@ -366,22 +189,6 @@ def pattern_match(sub_names: dict[str, any], all_names: list[str]) -> dict[str, 
             if pattern.fullmatch(name):
                 matched_names[name] = sub_val
     return matched_names
-
-
-def get_reward_fn(target: str, reward_functions: list[Callable] | str) -> Callable:
-    """Resolve a reward function by name from a list or module path."""
-    if isinstance(reward_functions, (list, tuple)):
-        fn = next((f for f in reward_functions if f.__name__ == target), None)
-    elif isinstance(reward_functions, str):
-        reward_module = __import__(reward_functions, fromlist=[target])
-        fn = getattr(reward_module, target, None)
-    else:
-        raise ValueError(
-            "reward_functions should be a list of functions or a string module path"
-        )
-    if fn is None:
-        raise KeyError(f"No reward function named '{target}'")
-    return fn
 
 
 def get_axis_params(value, axis_idx, x_value=0.0, n_dims=3):
@@ -394,12 +201,65 @@ def get_axis_params(value, axis_idx, x_value=0.0, n_dims=3):
     return params.tolist()
 
 
-@lru_cache(maxsize=128)
-def hash_names(names: str | tuple[str]) -> str:
-    if isinstance(names, str):
-        names = (names,)
-    assert isinstance(names, tuple) and all(
-        isinstance(_, str) for _ in names
-    ), "body_names must be a string or a list of strings."
-    hash_key = "_".join(sorted(names))
-    return hash_key
+# copied from `isaaclab_tasks.utils.parse_cfg.py`
+
+def get_checkpoint_path(
+    log_path: str, run_dir: str = ".*", checkpoint: str = ".*", other_dirs: list[str] = None, sort_alpha: bool = True
+) -> str:
+    """Get path to the model checkpoint in input directory.
+
+    The checkpoint file is resolved as: ``<log_path>/<run_dir>/<*other_dirs>/<checkpoint>``, where the
+    :attr:`other_dirs` are intermediate folder names to concatenate. These cannot be regex expressions.
+
+    If :attr:`run_dir` and :attr:`checkpoint` are regex expressions then the most recent (highest alphabetical order)
+    run and checkpoint are selected. To disable this behavior, set the flag :attr:`sort_alpha` to False.
+
+    Args:
+        log_path: The log directory path to find models in.
+        run_dir: The regex expression for the name of the directory containing the run. Defaults to the most
+            recent directory created inside :attr:`log_path`.
+        other_dirs: The intermediate directories between the run directory and the checkpoint file. Defaults to
+            None, which implies that checkpoint file is directly under the run directory.
+        checkpoint: The regex expression for the model checkpoint file. Defaults to the most recent
+            torch-model saved in the :attr:`run_dir` directory.
+        sort_alpha: Whether to sort the runs by alphabetical order. Defaults to True.
+            If False, the folders in :attr:`run_dir` are sorted by the last modified time.
+
+    Returns:
+        The path to the model checkpoint.
+
+    Raises:
+        ValueError: When no runs are found in the input directory.
+        ValueError: When no checkpoints are found in the input directory.
+
+    """
+    # check if runs present in directory
+    try:
+        # find all runs in the directory that math the regex expression
+        runs = [
+            os.path.join(log_path, run) for run in os.scandir(log_path) if run.is_dir() and re.match(run_dir, run.name)
+        ]
+        # sort matched runs by alphabetical order (latest run should be last)
+        if sort_alpha:
+            runs.sort()
+        else:
+            runs = sorted(runs, key=os.path.getmtime)
+        # create last run file path
+        if other_dirs is not None:
+            run_path = os.path.join(runs[-1], *other_dirs)
+        else:
+            run_path = runs[-1]
+    except IndexError:
+        raise ValueError(f"No runs present in the directory: '{log_path}' match: '{run_dir}'.")
+
+    # list all model checkpoints in the directory
+    model_checkpoints = [f for f in os.listdir(run_path) if re.match(checkpoint, f)]
+    # check if any checkpoints are present
+    if len(model_checkpoints) == 0:
+        raise ValueError(f"No checkpoints in the directory: '{run_path}' match '{checkpoint}'.")
+    # sort alphabetically while ensuring that *_10 comes after *_9
+    model_checkpoints.sort(key=lambda m: f"{m:0>15}")
+    # get latest matched checkpoint file
+    checkpoint_file = model_checkpoints[-1]
+
+    return os.path.join(run_path, checkpoint_file)

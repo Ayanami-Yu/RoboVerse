@@ -97,13 +97,13 @@ def get_args(test=False):
             "help": "Force display off at all times",
         },
         {
-            "name": "--resume",
+            "name": "--resume",  # TODO
             "type": str,
             "default": None,
             "help": "Resume training from a checkpoint",
         },
         {
-            "name": "--checkpoint",
+            "name": "--checkpoint",  # TODO
             "type": int,
             "default": -1,
             "help": "Saved model checkpoint number. If -1: will load the last checkpoint. Overrides config file if provided.",

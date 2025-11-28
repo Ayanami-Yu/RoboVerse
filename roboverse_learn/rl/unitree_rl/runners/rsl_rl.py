@@ -134,13 +134,13 @@ class RslRlEnvWrapper:
                           critic=self.env.priv_obs_buf)
 
 
-class RslRlWrapper(BaseRunnerWrapper):
+class RslRlWrapper(BaseRunnerWrapper):  # NOTE the runner class in MasterRunner
     def __init__(self, env: AgentTask, train_cfg: dict, log_dir:str):
         super().__init__(env, train_cfg, log_dir)
         from rsl_rl.runners import OnPolicyRunner, DistillationRunner  # TODO is DistillationRunner the only reason why unitree_rl uses RSL-RL 3.1.1?
 
         self.env_wrapper = RslRlEnvWrapper(self.env)
-        self.runner = OnPolicyRunner(
+        self.runner = OnPolicyRunner(  # TODO is this also used in eval? and check configs
             env=self.env_wrapper,
             train_cfg=self.train_cfg,
             device=self.device,

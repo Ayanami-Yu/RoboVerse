@@ -60,6 +60,7 @@ class MasterRunner:
         now = log_path if log_path else datetime.datetime.now().strftime("%Y_%m%d_%H%M%S")
 
         robot_cfgs = scenario.robots if isinstance(scenario.robots, list) else [scenario.robots]
+        # for each robot in the scenario, create an isolated environment and corresponding runner
         for robot in robot_cfgs:
             scenario_copy = copy.deepcopy(scenario)
             scenario_copy.robots = [robot]
@@ -77,11 +78,13 @@ class MasterRunner:
                 device=resolved_device,
                 env_cfg=env_cfg,
             )
-
+            # TODO check where `train_cfg.resume` comes from
             train_cfg = train_cfg_cls() if callable(train_cfg_cls) else train_cfg_cls
 
             log_dir = get_log_dir(task_name=self.task_name, now=now)
-            runner: BaseRunnerWrapper = runner_cls(env=env, train_cfg=train_cfg, log_dir=log_dir)
+            runner: BaseRunnerWrapper = runner_cls(env=env, train_cfg=train_cfg, log_dir=log_dir)  # RslRlWrapper
+
+            # store the runner and environment indexed by robot name
             self.runners[env.robot.name] = runner
             self.envs[env.robot.name] = env
 
@@ -100,10 +103,14 @@ class MasterRunner:
         first_runner = next(iter(self.runners.values()))
         first_runner.learn(max_iterations=max_iterations)
 
+    # FIXME a single checkpoint corresponds to multiple policies?
     def load(self, resume_dir: str, checkpoint: int = None):
         self.policys = {}
+        # loop through each robot's runner
         for _robot_name, _runner in self.runners.items():
             log_dir = get_log_dir(task_name=self.task_name, now=resume_dir)
             _runner.load(get_load_path(load_root=log_dir, checkpoint=checkpoint))
+
+            # store the trained policy indexed by robot name
             self.policys[_robot_name] = _runner.get_policy()
         return self.policys
