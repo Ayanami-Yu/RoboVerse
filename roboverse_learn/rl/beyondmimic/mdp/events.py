@@ -11,8 +11,8 @@ from roboverse_pack.tasks.beyondmimic.base.types import EnvTypes
 
 def randomize_joint_default_pos(  # startup
     env: EnvTypes,
-    env_ids: torch.Tensor | None,
-    joint_ids: torch.Tensor | None,
+    env_ids: torch.Tensor | None = None,
+    joint_ids: torch.Tensor | None = None,
     pos_distribution_params: tuple[float, float] | None = None,
     operation: Literal["add", "scale", "abs"] = "abs",
     distribution: Literal["uniform", "log_uniform", "gaussian"] = "uniform",

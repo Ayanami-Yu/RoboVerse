@@ -1,6 +1,6 @@
 import os
 import math
-from typing import Sequence
+from typing import Sequence, TYPE_CHECKING
 import numpy as np
 import torch
 from dataclasses import MISSING
@@ -13,9 +13,10 @@ from metasim.utils.math import (
     yaw_quat,
     quat_from_euler_xyz,
 )
-from roboverse_pack.tasks.beyondmimic.tracking.tracking_g1 import TrackingG1Task
 from roboverse_learn.rl.beyondmimic.helper.math import quat_inv, quat_error_magnitude
 from roboverse_learn.rl.beyondmimic.helper.string_utils import find_bodies
+if TYPE_CHECKING:
+    from roboverse_pack.tasks.beyondmimic.tracking.tracking_g1 import TrackingG1Task
 
 
 # adapted from BeyondMimic commands.py
@@ -77,7 +78,7 @@ class MotionCommandCfg:
 
 
 class MotionCommand:
-    def __init__(self, env: TrackingG1Task, cfg: MotionCommandCfg):
+    def __init__(self, env: "TrackingG1Task", cfg: MotionCommandCfg):
         self.env = env
         self.cfg = cfg
         self.device = env.device
@@ -86,7 +87,7 @@ class MotionCommand:
         self.time_left = torch.zeros(env.num_envs, device=env.device)
 
         self.motion_anchor_body_index = self.cfg.body_names.index(self.cfg.anchor_body_name)
-        self.body_indexes = torch.tensor(find_bodies(self.cfg.body_names, env.sorted_body_names))  # TODO is this the same as `get_indexes_from_substring()`?
+        self.body_indexes = torch.tensor(find_bodies(self.cfg.body_names, env.sorted_body_names, preserve_order=True)[0])
 
         self.motion = MotionLoader(cfg.motion_file, self.body_indexes, env.device)
         self.time_steps = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)

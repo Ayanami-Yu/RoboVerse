@@ -10,7 +10,7 @@ import torch
 from metasim.scenario.scenario import ScenarioCfg
 from metasim.utils.state import TensorState
 from roboverse_learn.rl.beyondmimic.configs.cfg_base import BaseEnvCfg
-from roboverse_learn.rl.beyondmimic.helper import (
+from roboverse_learn.rl.beyondmimic.helper.utils import (
     get_axis_params,
     pattern_match,
 )
@@ -40,7 +40,12 @@ class LeggedRobotTask(AgentTask):
         self._init_joint_cfg()
         self._init_episode_rewards()
         self._init_buffers()
+        self._setup()
         self.reset()
+
+    def _setup(self):
+        for _setup_fn, _params in self.setup_callback.values():
+            _setup_fn(env=self, **_params)  # TODO check if this will break `MaterialRandomizer` and `MassRandomizer`
 
     def _observation(self, env_states: TensorState) -> tuple[torch.Tensor, torch.Tensor | None]:
         """Return (policy_obs, privileged_obs). Implemented by subclasses."""
@@ -55,7 +60,7 @@ class LeggedRobotTask(AgentTask):
         self.action_scale = self.cfg.control.action_scale
 
         self.common_step_counter = 0
-        self.commands = self.cfg.commands
+        # self.commands = MotionCommand(env=self, cfg=self.cfg.commands)
 
     def _init_joint_cfg(self):
         """Parse default joint positions and torque limits from cfg."""
@@ -178,7 +183,7 @@ class LeggedRobotTask(AgentTask):
         ).repeat((self.num_envs, 1))
 
         # reset commands
-        self.commands.reset()
+        # self.commands.reset()  # NOTE commands will be reset when the motions are loaded
 
         # history buffer (action) for reward computation
         self.history_buffer = {}

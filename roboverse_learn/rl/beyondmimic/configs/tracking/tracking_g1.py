@@ -1,7 +1,6 @@
-import math
 from metasim.utils import configclass
-from metasim.scenario.scenario import ScenarioCfg
 from typing import Callable
+from dataclasses import MISSING
 
 from roboverse_learn.rl.beyondmimic.configs.cfg_base import BaseEnvCfg
 from roboverse_learn.rl.beyondmimic.configs.algorithm import (
@@ -39,7 +38,7 @@ VELOCITY_RANGE = {
 # TODO should be moved to a separate file or the same location as config superclass
 @configclass
 class CfgTerm:
-    func: Callable
+    func: Callable = MISSING
     params: dict[str, any] | None = None
 
 
@@ -50,7 +49,7 @@ class ObsTerm(CfgTerm):
 
 @configclass
 class RewTerm(CfgTerm):
-    weight: float
+    weight: float = 1.0
 
 
 @configclass

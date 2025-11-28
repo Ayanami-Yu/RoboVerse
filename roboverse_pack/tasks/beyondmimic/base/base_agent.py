@@ -30,20 +30,20 @@ class AgentTask(RLTaskEnv):
         self.robot = scenario.robots[0]
         BaseTaskEnv.__init__(self, scenario=scenario, device=device)
         self._initial_states = list_state_to_tensor(self.handler, self._get_initial_states(), self.device)
+
         # buffers will be allocated lazily once handler is available
         self.obs_buf_queue: deque[torch.Tensor] | None = None
         self.priv_obs_buf_queue: deque[torch.Tensor] | None = None
         self.actions: torch.Tensor | None = None
-        # self.torques: torch.Tensor | None = None
         self.rew_buf: torch.Tensor | None = None
         self.reset_buf: torch.Tensor | None = None
-        # self.time_out_buf: torch.Tensor | None = None
+
         self.extras: dict[str, Any] = {}
         self._default_env_states = deepcopy(self._initial_states)
         self.setup_initial_env_states = deepcopy(self._initial_states)
         self.extras_buffer: dict[str, any] = {}
 
-        # Callbacks
+        # callbacks
         self._bind_callbacks(callbacks=_callbacks_cfg)
 
     def _bind_callbacks(self, callbacks: dict | None = None):
@@ -55,9 +55,8 @@ class AgentTask(RLTaskEnv):
                 if hasattr(_callbacks[_key][0], "bind_handler"):
                     _callbacks[_key][0].bind_handler(self.handler)
 
-        _setup_callbacks = callbacks.pop("setup", {})
-        for _setup_fn, _params in _setup_callbacks.values():
-            _setup_fn(env=self, **_params)  # TODO check if this will break `MaterialRandomizer` and `MassRandomizer`
+        self.setup_callback = callbacks.pop("setup", {})
+        assert isinstance(self.setup_callback, dict)
         self.reset_callback = callbacks.pop("reset", {})
         assert isinstance(self.reset_callback, dict)
         self.pre_physics_step_callback = callbacks.pop("pre_step", {})

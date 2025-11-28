@@ -21,8 +21,10 @@ from roboverse_pack.tasks.beyondmimic.base.types import EnvTypes
 def get_args():
     """Get the command line arguments."""
     parser = argparse.ArgumentParser(description="Arguments for BeyondMimic motion tracking task")
-    parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate")
     parser.add_argument("--task", type=str, default=None, help="Name of the task")
+    parser.add_argument("--robots", type=str, default=None, help="Names of the robots to use")
+    parser.add_argument("--objects", type=str, default=None, help="Names of the objects to use")
+    parser.add_argument("--num_envs", type=int, default=4096, help="Number of environments to simulate")
     parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
     parser.add_argument("--sim", type=str, default="isaacsim", help="Simulator type")
     parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
@@ -40,7 +42,7 @@ def get_args():
     )
 
     # for loading
-    parser.add_argument("--resume", type=bool, default=None, help="Whether to resume from a checkpoint. Should only be used for training")
+    parser.add_argument("--resume", type=bool, default=False, help="Whether to resume from a checkpoint. Should only be used for training")
     parser.add_argument("--load_run", type=str, default=None, help="Name of the local folder to resume from if not using WandB")
     parser.add_argument("--checkpoint", type=str, default=None, help="Checkpoint file to resume from if not using WandB. Format: model_xxx.pt")
 

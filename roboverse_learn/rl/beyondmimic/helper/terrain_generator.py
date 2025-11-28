@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import numpy as np
 
-from roboverse_learn.rl.beyondmimic.helper import terrain_utils
+from .terrain_utils import *
 from roboverse_learn.rl.beyondmimic.configs.cfg_terrain import *
 
 class TerrainGenerator:

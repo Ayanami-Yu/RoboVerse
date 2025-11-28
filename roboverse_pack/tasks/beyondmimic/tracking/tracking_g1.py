@@ -14,6 +14,7 @@ from roboverse_learn.rl.beyondmimic.configs.tracking.tracking_g1 import (
     TrackingG1EnvCfg,
     TrackingG1RslRlTrainCfg,
 )
+from roboverse_learn.rl.beyondmimic.mdp.commands import MotionCommand
 from roboverse_pack.tasks.beyondmimic.base import LeggedRobotTask
 
 
@@ -67,11 +68,17 @@ class TrackingG1Task(LeggedRobotTask):
         scenario_copy = copy.deepcopy(scenario)
         scenario_copy.__post_init__()
 
+        super().__init__(scenario=scenario_copy, config=env_cfg, device=device)
+
         # record terminated envs for adapting sampling
         self.terminated_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         self.truncated_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
 
-        super().__init__(scenario=scenario_copy, config=env_cfg, device=device)
+    def load_motion_commands(self, motion_file: str):
+        """Load motion commands from the given file path and then reset commands."""
+        self.cfg.commands.motion_file = motion_file
+        self.commands = MotionCommand(env=self, cfg=self.cfg.commands)
+        self.commands.reset()
 
     def _compute_observation_group(self, env_states: TensorState, group_name: str):
         """Compute all observations of a given group and concatenate them into a single tensor."""

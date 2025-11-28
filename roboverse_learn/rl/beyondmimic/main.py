@@ -19,7 +19,7 @@ from metasim.task.registry import get_task_class
 
 from roboverse_pack.tasks.beyondmimic.base.types import EnvTypes
 from roboverse_learn.rl.beyondmimic.wrappers import EnvWrapperTypes, MasterRunner
-from roboverse_learn.rl.beyondmimic.helper import get_args, make_objects, make_robots, set_seed, get_checkpoint_path
+from roboverse_learn.rl.beyondmimic.helper.utils import get_args, make_objects, make_robots, set_seed, get_checkpoint_path
 from roboverse_learn.rl.beyondmimic.helper.exporter import export_motion_policy_as_onnx, attach_onnx_metadata
 
 
@@ -90,13 +90,15 @@ def play(args):
 
         if args.motion_file:
             print(f"[INFO]: Using motion file from CLI: {args.motion_file}")
-            env.cfg.commands.motion.motion_file = args.motion_file
+            # env.cfg.commands.motion.motion_file = args.motion_file
+            env.load_motion_commands(args.motion_file)
         else:
             art = next((a for a in wandb_run.used_artifacts() if a.type == "motions"), None)
             if art is None:
                 print("[WARN] No model artifact found in the run.")
             else:
-                env.cfg.commands.motion.motion_file = str(pathlib.Path(art.download()) / "motion.npz")
+                # env.cfg.commands.motion.motion_file = str(pathlib.Path(art.download()) / "motion.npz")
+                env.load_motion_commands(str(pathlib.Path(art.download()) / "motion.npz"))
     else:
         resume_path = get_checkpoint_path(master_runner.log_root_path, args.load_run, args.checkpoint)
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")
@@ -153,7 +155,8 @@ def train(args):
     artifact = api.artifact(registry_name)
 
     # load from WandB and set motion file path
-    env.cfg.commands.motion_file = str(pathlib.Path(artifact.download()) / "motion.npz")
+    # env.cfg.commands.motion_file = str(pathlib.Path(artifact.download()) / "motion.npz")
+    env.load_motion_commands(str(pathlib.Path(artifact.download()) / "motion.npz"))
 
     # resume training from previous checkpoint
     if args.resume:

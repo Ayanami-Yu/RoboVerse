@@ -79,7 +79,7 @@ class BaseEnvCfg:
 
     callbacks_setup: dict[str, tuple[Callable, dict] | Callable] = MISSING
     # func_name: (func(env, env_ids,**kwargs), kwargs)
-    callbacks_reset: dict[str, tuple[Callable, dict] | Callable] = MISSING
+    callbacks_reset: dict[str, tuple[Callable, dict] | Callable] = {}
     # func_name: (func(env, env_states, **kwargs), kwargs)
     callbacks_pre_step: dict[str, tuple[Callable, dict] | Callable] = {}
     # func_name: (func(env, actions, **kwargs), kwargs)
