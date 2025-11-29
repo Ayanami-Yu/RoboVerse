@@ -60,7 +60,7 @@ class LeggedRobotTask(AgentTask):
         self.action_scale = self.cfg.control.action_scale
 
         self.common_step_counter = 0
-        # self.commands = MotionCommand(env=self, cfg=self.cfg.commands)
+        self.commands = MotionCommand(env=self, cfg=self.cfg.commands)
 
     def _init_joint_cfg(self):
         """Parse default joint positions and torque limits from cfg."""
@@ -88,7 +88,7 @@ class LeggedRobotTask(AgentTask):
         self.p_gains = torch.tensor(p_gains, device=self.device)
         self.d_gains = torch.tensor(d_gains, device=self.device)
 
-        # Check if manual PD control is needed (if any joints use effort control)
+        # check if manual PD control is needed (if any joints use effort control)
         control_types = robot.control_type
         self.manual_pd_on = any(mode == "effort" for mode in control_types.values()) if control_types else False
 
@@ -105,9 +105,10 @@ class LeggedRobotTask(AgentTask):
         _diff = self.dof_pos_limits[:, 1] - self.dof_pos_limits[:, 0]
 
         # NOTE same as `ArticulationData.soft_joint_pos_limits` in Isaac Lab
-        self.soft_dof_pos_limits = torch.zeros_like(self.dof_pos_limits, device=self.device)
-        self.soft_dof_pos_limits[:, 0] = _mid - 0.5 * _diff * soft_limit_factor
-        self.soft_dof_pos_limits[:, 1] = _mid + 0.5 * _diff * soft_limit_factor
+        soft_dof_pos_limits = torch.zeros_like(self.dof_pos_limits, device=self.device)
+        soft_dof_pos_limits[:, 0] = _mid - 0.5 * _diff * soft_limit_factor
+        soft_dof_pos_limits[:, 1] = _mid + 0.5 * _diff * soft_limit_factor
+        self.soft_dof_pos_limits = soft_dof_pos_limits.unsqueeze(0).repeat(self.num_envs, 1, 1)  # (n_envs, n_dofs, 2)
 
         dof_vel_limits = getattr(
             robot,
@@ -127,7 +128,7 @@ class LeggedRobotTask(AgentTask):
         default_joint_pos = pattern_match(default_joint_pos, sorted_joint_names)
         sorted_joint_pos = [default_joint_pos[name] for name in sorted_joint_names]
         default_dof_pos = torch.tensor(sorted_joint_pos, device=self.device)  # (n_dofs,)
-        self.default_dof_pos = default_dof_pos.unsqueeze(0).repeat(self.scenario.num_envs, 1)  # (n_envs, n_dofs)
+        self.default_dof_pos = default_dof_pos.unsqueeze(0).repeat(self.num_envs, 1)  # (n_envs, n_dofs)
 
         default_joint_vel = getattr(robot, "default_joint_velocities", 0)
         if isinstance(default_joint_vel, dict):
@@ -138,7 +139,7 @@ class LeggedRobotTask(AgentTask):
             else [default_joint_vel for _ in sorted_joint_names]
         )
         default_dof_vel = torch.tensor(sorted_joint_vel, device=self.device)  # (n_dofs,)
-        self.default_dof_vel = default_dof_vel.unsqueeze(0).repeat(self.scenario.num_envs, 1)  # (n_envs, n_dofs)
+        self.default_dof_vel = default_dof_vel.unsqueeze(0).repeat(self.num_envs, 1)  # (n_envs, n_dofs)
 
     def _pre_physics_step(self, actions: torch.Tensor):
         """Apply pre-physics callbacks."""
@@ -172,7 +173,10 @@ class LeggedRobotTask(AgentTask):
         self.reset_buf = torch.zeros(
             size=(self.num_envs,), dtype=torch.bool, device=self.device
         )  # both time-out and reset
-        # self.time_out_buf = torch.zeros(size=(self.num_envs,), dtype=torch.bool, device=self.device)  # TODO remove this
+
+        # record terminated envs for adapting sampling
+        self.terminated_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        self.truncated_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
 
         # set gravity vector
         self.up_axis_idx = 2
@@ -183,14 +187,26 @@ class LeggedRobotTask(AgentTask):
         ).repeat((self.num_envs, 1))
 
         # reset commands
-        # self.commands.reset()  # NOTE commands will be reset when the motions are loaded
+        self.commands.reset()
 
         # history buffer (action) for reward computation
         self.history_buffer = {}
         self.history_buffer["actions"] = deque([self.actions.clone() * 0.0], maxlen=2)
         # self.history_buffer["joint_vel"] = deque([self.actions.clone() * 0.0], maxlen=2)  # TODO remove this
 
-        # for logs
+        # for observation history
+        env_states = self.handler.get_states()
+        obs_single, priv_obs_single = self._observation(env_states)
+        self.obs_buf_queue = deque(
+            [deepcopy(obs_single * 0.0) for _ in range(self.cfg.obs_len_history)],
+            maxlen=self.cfg.obs_len_history,
+        )
+        self.priv_obs_buf_queue = deque(
+            [deepcopy(priv_obs_single * 0.0) for _ in range(self.cfg.priv_obs_len_history)],
+            maxlen=self.cfg.priv_obs_len_history,
+        )
+
+        # for logging
         self.episode_not_terminations = {
             _key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
             for _key in self.terminate_callback.keys()
@@ -233,11 +249,11 @@ class LeggedRobotTask(AgentTask):
         self.actions[env_ids] = 0.0
         self.rew_buf[env_ids] = 0.0
 
-        # reset observation history buffers  # TODO remove this
-        # for _obs in self.obs_buf_queue:
-        #     _obs[env_ids] = 0.0
-        # for _priv_obs in self.priv_obs_buf_queue:
-        #     _priv_obs[env_ids] = 0.0
+        # reset observation history buffers
+        for _obs in self.obs_buf_queue:
+            _obs[env_ids] = 0.0
+        for _priv_obs in self.priv_obs_buf_queue:
+            _priv_obs[env_ids] = 0.0
 
         # log
         # TODO adapt metrics of `MotionCommand` to this
@@ -302,7 +318,7 @@ class LeggedRobotTask(AgentTask):
             self.commands.reset(env_ids=reset_env_ids)  # TODO
 
         # update commands
-        self.commands.compute()
+        self.commands.compute(env_states)
 
         # interval events
         for _step_fn, _params in self.post_physics_step_callback.values():
@@ -326,11 +342,14 @@ class LeggedRobotTask(AgentTask):
             else:
                 raise ValueError(f"History buffer key {key} not found in task or robot states.")
 
-    def _reward(self, env_states: TensorState, cmd: MotionCommand):
+    def _reward(self, env_states: TensorState):
         rew_buf = torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
         for name, term_cfg in asdict(self.cfg.rewards).items():
             # TODO multiply `step_dt` or not
-            value = term_cfg.func(self, env_states, **term_cfg.params) * term_cfg.weight * self.step_dt
+            if term_cfg["params"]:
+                value = term_cfg["func"](self, env_states, **term_cfg["params"]) * term_cfg["weight"] * self.step_dt
+            else:
+                value = term_cfg["func"](self, env_states) * term_cfg["weight"] * self.step_dt
             rew_buf += value  # update total reward
             self.episode_rewards[name] += value  # update episodic sum
 

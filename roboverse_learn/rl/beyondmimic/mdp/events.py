@@ -31,7 +31,8 @@ def randomize_joint_default_pos(  # startup
         joint_ids = torch.arange(len(env.sorted_joint_names), device=env.device)
 
     if pos_distribution_params is not None:
-        pos = env.default_dof_pos.unsqueeze(0).repeat(env.scenario.num_envs, 1).to(env.device).clone()  # [n_envs, n_dofs]
+        # pos = env.default_dof_pos.unsqueeze(0).repeat(env.scenario.num_envs, 1).to(env.device).clone()  # FIXME
+        pos = env.default_dof_pos.to(env.device).clone()  # [n_envs, n_dofs]
         pos = randomize_prop_by_op(
             pos, pos_distribution_params, env_ids, joint_ids, operation=operation, distribution=distribution
         )[env_ids][:, joint_ids]

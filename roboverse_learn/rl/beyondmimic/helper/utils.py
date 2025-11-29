@@ -16,6 +16,7 @@ from metasim.utils.setup_util import get_robot
 from metasim.utils.string_util import is_camel_case, is_snake_case, to_camel_case
 from metasim.scenario.scenario import ScenarioCfg
 from roboverse_pack.tasks.beyondmimic.base.types import EnvTypes
+from roboverse_learn.rl.beyondmimic.mdp.commands import MotionCommand
 
 
 def get_args():
@@ -31,7 +32,7 @@ def get_args():
 
     # for logging
     parser.add_argument(
-        "--exp_name", type=str, default=None, help="Name of the experiment folder where logs will be stored"
+        "--exp_name", type=str, default="tracking_g1", help="Name of the experiment folder where logs will be stored"
     )
     parser.add_argument("--run_name", type=str, default=None, help="Run name suffix to the log directory")
     parser.add_argument(
@@ -47,7 +48,6 @@ def get_args():
     parser.add_argument("--checkpoint", type=str, default=None, help="Checkpoint file to resume from if not using WandB. Format: model_xxx.pt")
 
     # evaluation args
-    parser.add_argument("--eval", action="store_true", default=False, help="Run in evaluation mode")
     parser.add_argument(
         "--motion_file", type=str, default=None, help="Path to the local motion file"
     )
@@ -56,7 +56,7 @@ def get_args():
     )
 
     # training args
-    parser.add_argument("--max_iterations", type=int, default=None, help="Max number of training iterations")
+    parser.add_argument("--max_iterations", type=int, default=30000, help="Max number of training iterations")
     parser.add_argument("--registry_name", type=str, default=None, help="Name of the WandB registry")  # TODO should be required
 
     return parser.parse_args()
@@ -171,15 +171,19 @@ def hash_names(names: str | tuple[str]) -> str:
     return hash_key
 
 
-def get_indexes(
-    env: EnvTypes, sub_names: tuple[str] | str, all_names: list[str] | tuple[str]
-):
-    hash_key = hash_names(sub_names)
-    if hash_key not in env.extras_buffer:
-        env.extras_buffer[hash_key] = get_indexes_from_substring(
-            sub_names, all_names, fullmatch=True
-        ).to(env.device)
-    return env.extras_buffer[hash_key]
+# def get_indexes(  # TODO remove this if it's not used
+#     env: EnvTypes, sub_names: tuple[str] | str, all_names: list[str] | tuple[str]
+# ):
+#     hash_key = hash_names(sub_names)
+#     if hash_key not in env.extras_buffer:
+#         env.extras_buffer[hash_key] = get_indexes_from_substring(
+#             sub_names, all_names, fullmatch=True
+#         ).to(env.device)
+#     return env.extras_buffer[hash_key]
+
+
+def get_body_indexes(command: MotionCommand, body_names: list[str] | None = None) -> list[int]:
+    return [i for i, name in enumerate(command.cfg.body_names) if (body_names is None) or (name in body_names)]
 
 
 def pattern_match(sub_names: dict[str, any], all_names: list[str]) -> dict[str, any]:

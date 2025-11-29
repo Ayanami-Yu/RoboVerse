@@ -10,13 +10,14 @@ from roboverse_pack.tasks.beyondmimic.base.types import EnvTypes
 def robot_body_pos_b(env: EnvTypes, env_states: TensorState) -> torch.Tensor:
     """Body positions relative to (robot) anchor frame."""
     robot_state = env_states.robots[env.name]
+    body_indexes = env.commands.body_indexes
 
     num_bodies = len(env.commands.cfg.body_names)
     pos_b, _ = subtract_frame_transforms(
         robot_state.root_state[:, None, :3].repeat(1, num_bodies, 1),
         robot_state.root_state[:, None, 3:7].repeat(1, num_bodies, 1),
-        robot_state.body_state[:, :, :3],
-        robot_state.body_state[:, :, 3:7],
+        robot_state.body_state[:, body_indexes, :3],
+        robot_state.body_state[:, body_indexes, 3:7],
     )  # [n_envs, n_bodies, 3] positions of each body relative to the anchor frame
 
     return pos_b.view(env.num_envs, -1)  # [n_envs, n_bodies * 3]
@@ -25,13 +26,14 @@ def robot_body_pos_b(env: EnvTypes, env_states: TensorState) -> torch.Tensor:
 def robot_body_ori_b(env: EnvTypes, env_states: TensorState) -> torch.Tensor:
     """Body orientations relative to anchor frame."""
     robot_state = env_states.robots[env.name]
+    body_indexes = env.commands.body_indexes
 
     num_bodies = len(env.commands.cfg.body_names)
     _, ori_b = subtract_frame_transforms(
         robot_state.root_state[:, None, :3].repeat(1, num_bodies, 1),
         robot_state.root_state[:, None, 3:7].repeat(1, num_bodies, 1),
-        robot_state.body_state[:, :, :3],
-        robot_state.body_state[:, :, 3:7],
+        robot_state.body_state[:, body_indexes, :3],
+        robot_state.body_state[:, body_indexes, 3:7],
     )
     mat = matrix_from_quat(ori_b)
     return mat[..., :2].reshape(mat.shape[0], -1)

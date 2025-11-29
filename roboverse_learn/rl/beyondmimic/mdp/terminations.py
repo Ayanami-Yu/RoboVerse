@@ -7,7 +7,7 @@ from metasim.utils.math import quat_rotate_inverse
 
 from roboverse_pack.tasks.beyondmimic.base.types import EnvTypes
 from roboverse_learn.rl.beyondmimic.mdp.commands import MotionCommand
-from roboverse_learn.rl.beyondmimic.helper.utils import get_indexes
+from roboverse_learn.rl.beyondmimic.helper.utils import get_body_indexes
 
 
 # FIXME `env_states` receives params from `LeggedRobotTask._terminated()` but not used
@@ -35,6 +35,6 @@ def bad_anchor_ori(env: EnvTypes, env_states: TensorState, threshold: float) -> 
 
 def bad_motion_body_pos_z_only(env: EnvTypes, env_states: TensorState, threshold: float, body_names: list[str]) -> torch.Tensor:
     robot_state = env_states.robots[env.name]
-    body_indexes = get_indexes(env, body_names, env_states.robots[env.name].body_names)
+    body_indexes = get_body_indexes(env.commands, body_names)
     error = torch.abs(env.commands.body_pos_relative_w[:, body_indexes, 2] - robot_state.body_state[:, body_indexes, 2])
     return torch.any(error > threshold, dim=-1)

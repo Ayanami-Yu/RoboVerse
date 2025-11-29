@@ -14,7 +14,6 @@ from roboverse_learn.rl.beyondmimic.configs.tracking.tracking_g1 import (
     TrackingG1EnvCfg,
     TrackingG1RslRlTrainCfg,
 )
-from roboverse_learn.rl.beyondmimic.mdp.commands import MotionCommand
 from roboverse_pack.tasks.beyondmimic.base import LeggedRobotTask
 
 
@@ -70,25 +69,19 @@ class TrackingG1Task(LeggedRobotTask):
 
         super().__init__(scenario=scenario_copy, config=env_cfg, device=device)
 
-        # record terminated envs for adapting sampling
-        self.terminated_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
-        self.truncated_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
-
-    def load_motion_commands(self, motion_file: str):
-        """Load motion commands from the given file path and then reset commands."""
-        self.cfg.commands.motion_file = motion_file
-        self.commands = MotionCommand(env=self, cfg=self.cfg.commands)
-        self.commands.reset()
-
     def _compute_observation_group(self, env_states: TensorState, group_name: str):
         """Compute all observations of a given group and concatenate them into a single tensor."""
         obs_terms = getattr(self.cfg.observations, group_name)
         group_obs = []
         for term_cfg in asdict(obs_terms).values():
-            obs: torch.Tensor = term_cfg.func(self, env_states, **term_cfg.params).clone()
-            if term_cfg.noise_range:
+            if term_cfg["params"]:
+                obs: torch.Tensor = term_cfg["func"](self, env_states, **term_cfg["params"]).clone()
+            else:
+                obs: torch.Tensor = term_cfg["func"](self, env_states).clone()
+            if term_cfg["noise_range"]:
                 obs += (
-                    torch.rand_like(obs) * (term_cfg.noise_range[1] - term_cfg.noise_range[0]) + term_cfg.noise_range[0]
+                    torch.rand_like(obs) * (term_cfg["noise_range"][1] - term_cfg["noise_range"][0])
+                    + term_cfg["noise_range"][0]
                 )  # [n_envs, n_dims]
             group_obs.append(obs)
         return torch.cat(group_obs, dim=-1)

@@ -23,7 +23,7 @@ from roboverse_learn.rl.beyondmimic.helper.utils import get_args, make_objects, 
 from roboverse_learn.rl.beyondmimic.helper.exporter import export_motion_policy_as_onnx, attach_onnx_metadata
 
 
-def prepare(args):
+def play(args):
     task_cls = get_task_class(args.task)
     scenario_template = getattr(task_cls, "scenario", ScenarioCfg())
     scenario = copy.deepcopy(scenario_template)
@@ -33,7 +33,6 @@ def prepare(args):
         "simulator": args.sim,
         "headless": args.headless,
     }
-
     if args.robots:
         overrides["robots"] = make_robots(args.robots)
         overrides["cameras"] = [
@@ -42,7 +41,6 @@ def prepare(args):
             if hasattr(robot, "cameras")
             for camera in getattr(robot, "cameras", [])
         ]
-
     if args.objects:
         overrides["objects"] = make_objects(args.objects)
 
@@ -50,25 +48,11 @@ def prepare(args):
 
     device = "cpu" if args.sim == "mujoco" else ("cuda" if torch.cuda.is_available() else "cpu")
 
-    master_runner = MasterRunner(
-        task_cls=task_cls,
-        scenario=scenario,
-        lib_name="rsl_rl",
-        device=device,
-    )
-    return master_runner
-
-
-def play(args):
-    master_runner = prepare(args)
-    env = list(master_runner.envs.values())[0]
-
     # get resume path and set motion file
     if args.wandb_path:
         import wandb
 
         run_path = args.wandb_path
-
         api = wandb.Api()
         # if specific model file provided, extract run path
         if "model" in args.wandb_path:
@@ -90,23 +74,30 @@ def play(args):
 
         if args.motion_file:
             print(f"[INFO]: Using motion file from CLI: {args.motion_file}")
-            # env.cfg.commands.motion.motion_file = args.motion_file
-            env.load_motion_commands(args.motion_file)
         else:
             art = next((a for a in wandb_run.used_artifacts() if a.type == "motions"), None)
             if art is None:
                 print("[WARN] No model artifact found in the run.")
             else:
-                # env.cfg.commands.motion.motion_file = str(pathlib.Path(art.download()) / "motion.npz")
-                env.load_motion_commands(str(pathlib.Path(art.download()) / "motion.npz"))
+                args.motion_file = str(pathlib.Path(art.download()) / "motion.npz")
     else:
-        resume_path = get_checkpoint_path(master_runner.log_root_path, args.load_run, args.checkpoint)
+        log_root_path = os.path.join("logs", "rsl_rl", args.exp_name)
+        resume_path = get_checkpoint_path(log_root_path, args.load_run, args.checkpoint)
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")
+
+    master_runner = MasterRunner(
+        env_cls=task_cls,
+        scenario=scenario,
+        lib_name="rsl_rl",
+        device=device,
+        args=args,
+    )
 
     # obtain the trained policy for inference
     name = list(master_runner.runners.keys())[0]
     policy = master_runner.load(resume_path)[name]
     runner = master_runner.runners[name]
+    env = list(master_runner.envs.values())[0]
 
     # export policy to ONNX
     export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
@@ -124,53 +115,18 @@ def play(args):
     # )
     print(f"[INFO]: Exported policy as ONNX to : {export_model_dir}")
 
-    env: EnvTypes = runner.env
-    env_wrapper: EnvWrapperTypes = runner.env_wrapper
-
     # reset environment and simulate
     env.reset()
     obs, _, _, _ = env.step(torch.zeros(env.num_envs, env.num_actions, device=env.device))
-    # obs = env_wrapper.get_observations()  # TODO remove this
+    # obs = runner.env_wrapper.get_observations()  # TODO remove this
 
     # TODO check if `torch.inference_mode()` is on
     for _ in range(1000000):
         actions = policy(obs)
-        obs, _, _, _ = env_wrapper.step(actions)
-
-
-def train(args):
-    master_runner = prepare(args)
-    env = list(master_runner.envs.values())[0]
-
-    # load the motion file from the wandb registry
-    registry_name = args.registry_name
-    # check if the registry name includes alias, if not, append ":latest"
-    if ":" not in registry_name:
-        registry_name += ":latest"
-
-    import pathlib
-    import wandb
-
-    api = wandb.Api()
-    artifact = api.artifact(registry_name)
-
-    # load from WandB and set motion file path
-    # env.cfg.commands.motion_file = str(pathlib.Path(artifact.download()) / "motion.npz")
-    env.load_motion_commands(str(pathlib.Path(artifact.download()) / "motion.npz"))
-
-    # resume training from previous checkpoint
-    if args.resume:
-        resume_path = get_checkpoint_path(master_runner.log_root_path, args.load_run, args.checkpoint)
-        print(f"[INFO]: Loading model checkpoint from: {resume_path}")
-        master_runner.load(resume_path)
-
-    master_runner.learn(max_iterations=args.max_iterations)
+        obs, _, _, _ = runner.env_wrapper.step(actions)
 
 
 if __name__ == "__main__":
     args = get_args()
     set_seed(args.seed)
-    if args.eval:
-        play(args)
-    else:
-        train(args)
+    play(args)

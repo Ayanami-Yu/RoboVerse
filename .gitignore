@@ -109,3 +109,4 @@ id_rsa*
 nohup.out
 references/
 .cursor/
+artifacts/

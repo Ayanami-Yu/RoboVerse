@@ -212,29 +212,30 @@ class MotionCommand:
         )
         self._current_bin_failed.zero_()
 
-    def _update_metrics(self):
+    def _update_metrics(self, env_states: TensorState):
         """Update metrics for logging."""
-        self.metrics["error_anchor_pos"] = torch.norm(self.anchor_pos_w - self.robot_anchor_pos_w, dim=-1)
-        self.metrics["error_anchor_rot"] = quat_error_magnitude(self.anchor_quat_w, self.robot_anchor_quat_w)
-        self.metrics["error_anchor_lin_vel"] = torch.norm(self.anchor_lin_vel_w - self.robot_anchor_lin_vel_w, dim=-1)
-        self.metrics["error_anchor_ang_vel"] = torch.norm(self.anchor_ang_vel_w - self.robot_anchor_ang_vel_w, dim=-1)
+        robot_state = env_states.robots[self.env.name]
+        self.metrics["error_anchor_pos"] = torch.norm(self.anchor_pos_w - robot_state.root_state[:, :3], dim=-1)
+        self.metrics["error_anchor_rot"] = quat_error_magnitude(self.anchor_quat_w, robot_state.root_state[:, 3:7])
+        self.metrics["error_anchor_lin_vel"] = torch.norm(self.anchor_lin_vel_w - robot_state.root_state[:, 7:10], dim=-1)
+        self.metrics["error_anchor_ang_vel"] = torch.norm(self.anchor_ang_vel_w - robot_state.root_state[:, 10:13], dim=-1)
 
-        self.metrics["error_body_pos"] = torch.norm(self.body_pos_relative_w - self.robot_body_pos_w, dim=-1).mean(
+        self.metrics["error_body_pos"] = torch.norm(self.body_pos_relative_w - robot_state.body_state[:, self.body_indexes, :3], dim=-1).mean(
             dim=-1
         )
-        self.metrics["error_body_rot"] = quat_error_magnitude(self.body_quat_relative_w, self.robot_body_quat_w).mean(
-            dim=-1
-        )
-
-        self.metrics["error_body_lin_vel"] = torch.norm(self.body_lin_vel_w - self.robot_body_lin_vel_w, dim=-1).mean(
-            dim=-1
-        )
-        self.metrics["error_body_ang_vel"] = torch.norm(self.body_ang_vel_w - self.robot_body_ang_vel_w, dim=-1).mean(
+        self.metrics["error_body_rot"] = quat_error_magnitude(self.body_quat_relative_w, robot_state.body_state[:, self.body_indexes, 3:7]).mean(
             dim=-1
         )
 
-        self.metrics["error_joint_pos"] = torch.norm(self.joint_pos - self.robot_joint_pos, dim=-1)
-        self.metrics["error_joint_vel"] = torch.norm(self.joint_vel - self.robot_joint_vel, dim=-1)
+        self.metrics["error_body_lin_vel"] = torch.norm(self.body_lin_vel_w - robot_state.body_state[:, self.body_indexes, 7:10], dim=-1).mean(
+            dim=-1
+        )
+        self.metrics["error_body_ang_vel"] = torch.norm(self.body_ang_vel_w - robot_state.body_state[:, self.body_indexes, 10:13], dim=-1).mean(
+            dim=-1
+        )
+
+        self.metrics["error_joint_pos"] = torch.norm(self.joint_pos - robot_state.joint_pos, dim=-1)
+        self.metrics["error_joint_vel"] = torch.norm(self.joint_vel - robot_state.joint_vel, dim=-1)
 
     def reset(self, env_ids: Sequence[int] | None = None):
         if env_ids is None:
@@ -244,10 +245,10 @@ class MotionCommand:
             self.time_left[env_ids] = self.time_left[env_ids].uniform_(*self.cfg.resampling_time_range)
             self._resample_command(env_ids, self.env.handler.get_states())  # TODO is using `get_states()` here correct?
 
-    def compute(self):
+    def compute(self, env_states: TensorState):
         """Compute the command."""
         # update the metrics based on current state
-        self._update_metrics()
+        self._update_metrics(env_states)
         # reduce the time left before resampling by the timestep passed since the last call
         self.time_left -= self.env.step_dt
         # resample the command if necessary
@@ -255,7 +256,7 @@ class MotionCommand:
         if len(resample_env_ids) > 0:
             self._resample(resample_env_ids)
         # update the command
-        self._update_command()
+        self._update_command(env_states)
 
     @property
     def command(self) -> torch.Tensor:
