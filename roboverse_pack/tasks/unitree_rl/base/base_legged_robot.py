@@ -284,7 +284,7 @@ class LeggedRobotTask(AgentTask):
             _priv_obs[env_ids] = 0.0
 
         ################# LOGS #################
-        for key in self.episode_rewards.keys():
+        for key in self.episode_rewards.keys():  # NOTE corresponds to `RewardManager._episode_sums` in Isaac Lab
             self.extras["episode"]["Episode_Reward/" + key] = (
                 torch.mean(self.episode_rewards[key][env_ids])
                 / self.cfg.episode_length_s  # NOTE this is the same in `RewardManager.reset()` in Isaac Lab

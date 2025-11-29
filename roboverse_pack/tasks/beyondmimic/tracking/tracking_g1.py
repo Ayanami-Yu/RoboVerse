@@ -104,5 +104,5 @@ class TrackingG1Task(LeggedRobotTask):
                 self.truncated_buf = torch.logical_or(self.truncated_buf, _flag)
             else:
                 self.terminated_buf = torch.logical_or(self.terminated_buf, _flag)
-            self.episode_not_terminations[_key] += _flag.to(torch.float)
+            self.episode_not_terminated[_key] += _flag.to(torch.float)
         return torch.logical_or(self.terminated_buf, self.truncated_buf)

@@ -240,13 +240,24 @@ class MotionCommand:
     def reset(self, env_ids: Sequence[int] | None = None):
         if env_ids is None:
             env_ids = torch.arange(self.env.num_envs, dtype=torch.int64, device=self.device)
+
+        # add logging metrics
+        extras = {}
+        for metric_name, metric_value in self.metrics.items():
+            # compute the mean metric value
+            extras[metric_name] = torch.mean(metric_value[env_ids]).item()
+            # reset the metric value
+            metric_value[env_ids] = 0.0
+
         if len(env_ids) != 0:
             # resample the time left before resampling (will be used by `compute()`)
             self.time_left[env_ids] = self.time_left[env_ids].uniform_(*self.cfg.resampling_time_range)
             self._resample_command(env_ids, self.env.handler.get_states())  # TODO is using `get_states()` here correct?
 
+        return extras
+
     def compute(self, env_states: TensorState):
-        """Compute the command."""
+        """Compute the commands."""
         # update the metrics based on current state
         self._update_metrics(env_states)
         # reduce the time left before resampling by the timestep passed since the last call

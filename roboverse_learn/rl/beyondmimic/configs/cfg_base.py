@@ -19,7 +19,7 @@ class CallbacksCfg:
 class BaseEnvCfg:
     """The base class of environment configuration for legged robots."""
 
-    episode_length_s = 10.0
+    max_episode_length_s = 10.0
     obs_len_history = 1  # number of past observations to include in the observation
     priv_obs_len_history = 1  # number of past privileged observations to include in the privileged observation
 

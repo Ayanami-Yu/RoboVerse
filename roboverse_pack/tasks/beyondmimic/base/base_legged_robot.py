@@ -38,7 +38,6 @@ class LeggedRobotTask(AgentTask):
 
         self._instantiate_cfg(self.cfg)
         self._init_joint_cfg()
-        self._init_episode_rewards()
         self._init_buffers()
         self._setup()
         self.reset()
@@ -148,19 +147,6 @@ class LeggedRobotTask(AgentTask):
         # NOTE corresponds to action clipping in `RslRlVecEnvWrapper.step()` in Isaac Lab
         return torch.clip(actions, -self.action_clip, self.action_clip)
 
-    def _init_episode_rewards(self):
-        """Prepare episode rewards for logging in `reset()`."""
-        # reward episode sums
-        self.episode_rewards = {
-            name: torch.zeros(
-                self.num_envs,
-                dtype=torch.float,
-                device=self.device,
-                requires_grad=False,
-            )
-            for name in asdict(self.cfg.rewards).keys()  # TODO check if this is correct
-        }
-
     def _init_buffers(self):
         self.actions = torch.zeros(
             size=(self.num_envs, self.num_actions),
@@ -187,7 +173,7 @@ class LeggedRobotTask(AgentTask):
         ).repeat((self.num_envs, 1))
 
         # reset commands
-        self.commands.reset()
+        self.commands.reset()  # TODO no need to record the command metrics here?
 
         # history buffer (action) for reward computation
         self.history_buffer = {}
@@ -207,9 +193,18 @@ class LeggedRobotTask(AgentTask):
         )
 
         # for logging
-        self.episode_not_terminations = {
+        self.episode_not_terminated = {
             _key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
             for _key in self.terminate_callback.keys()
+        }  # FIXME why is this float instead of bool?
+        self.episode_rewards = {
+            name: torch.zeros(
+                self.num_envs,
+                dtype=torch.float,
+                device=self.device,
+                requires_grad=False,
+            )
+            for name in asdict(self.cfg.rewards).keys()
         }
 
     def _compute_effort(self, actions: torch.Tensor, env_states: TensorState) -> torch.Tensor:
@@ -231,42 +226,58 @@ class LeggedRobotTask(AgentTask):
             env_ids = torch.tensor(list(range(self.num_envs)), device=self.device)
 
         self.extras["episode"] = {}
+
+        # update the curriculum for environments that need a reset
         if self.cfg.curriculum.enabled:
             for _name, _func in self.cfg.curriculum.funcs.items():
                 _return_val = _func(self, env_ids)
                 self.extras["episode"]["Curriculum/" + _name] = _return_val
 
-        # call registered functions in reset_funcs.py
+        # reset the internal buffers of the scene elements  # TODO is this needed?
+
+        # apply events such as randomizations for environments that need a reset
         for _reset_fn, _params in self.reset_callback.values():
             _ = _reset_fn(self, env_ids, **_params)
-
         self.set_states(states=self.setup_initial_env_states, env_ids=env_ids)
 
-        for history in self.history_buffer.values():
-            for item in history:
-                item[env_ids] = 0.0
-        self._episode_steps[env_ids] = 0
-        self.actions[env_ids] = 0.0
-        self.rew_buf[env_ids] = 0.0
-
-        # reset observation history buffers
+        # reset observations
         for _obs in self.obs_buf_queue:
             _obs[env_ids] = 0.0
         for _priv_obs in self.priv_obs_buf_queue:
             _priv_obs[env_ids] = 0.0
 
-        # log
-        # TODO adapt metrics of `MotionCommand` to this
+        # reset actions and other history buffers
+        self.actions[env_ids] = 0.0
+        for history in self.history_buffer.values():
+            for item in history:
+                item[env_ids] = 0.0
+
+        # reset rewards
+        # self.rew_buf[env_ids] = 0.0  # FIXME why did this even exist?
         for key in self.episode_rewards.keys():
             self.extras["episode"]["Episode_Reward/" + key] = (
-                torch.mean(self.episode_rewards[key][env_ids]) / self.cfg.episode_length_s
+                torch.mean(self.episode_rewards[key][env_ids]) / self.cfg.max_episode_length_s
             )
             self.episode_rewards[key][env_ids] = 0.0
-        for key in self.episode_not_terminations.keys():
+
+        # reset curriculum
+
+        # reset commands
+        metrics = self.commands.reset(env_ids=env_ids)  # TODO
+        for metric_name, metric_value in metrics.items():
+            self.extras["episode"][f"Metrics_Motion/{metric_name}"] = metric_value
+
+        # reset events
+
+        # reset terminations
+        for key in self.episode_not_terminated.keys():
             self.extras["episode"]["Episode_Termination/" + key] = (
-                torch.mean(self.episode_not_terminations[key][env_ids]) / self.max_episode_steps
+                torch.mean(self.episode_not_terminated[key][env_ids]) / self.max_episode_steps
             )
-            self.episode_not_terminations[key][env_ids] = 0.0
+            self.episode_not_terminated[key][env_ids] = 0.0
+
+        # reset the episode length buffer
+        self._episode_steps[env_ids] = 0
 
     def step(
         self,
@@ -296,44 +307,42 @@ class LeggedRobotTask(AgentTask):
             self.obs_buf,
             self.rew_buf,
             self.reset_buf,
-            # self.time_out_buf,
             self.extras,
         )
 
     def _post_physics_step(self, env_states: TensorState):
-        self._episode_steps += 1
-        self.common_step_counter += 1
+        self._episode_steps += 1  # step in current episode (per env)
+        self.common_step_counter += 1  # total step (common for all envs)
 
-        # TODO verify `time_out_buf` is unnecessary and remove it
         # check termination conditions and compute rewards
-        # self.time_out_buf[:] = self._time_out(env_states)
-        # self.reset_buf[:] = torch.logical_or(self.time_out_buf, self._terminated(env_states))
         self.reset_buf[:] = self._terminated(env_states)
         self.rew_buf[:] = self._reward(env_states)
 
-        # reset envs
+        # reset envs and MDP
         reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         if len(reset_env_ids) > 0:
-            self.reset(env_ids=reset_env_ids)  # call reset functions
-            self.commands.reset(env_ids=reset_env_ids)  # TODO
+            self.reset(env_ids=reset_env_ids)
+            # TODO check the corresponding code to the commented lines
+            # update articulation kinematics
+            # self.scene.write_data_to_sim()
+            # self.sim.forward()
 
         # update commands
         self.commands.compute(env_states)
 
-        # interval events
+        # step interval events
         for _step_fn, _params in self.post_physics_step_callback.values():
             _step_fn(self, env_states, **_params)
 
         # compute observations after resets
         obs_single, priv_single = self._observation(env_states)
-        # append to the observation history buffer
+        # append to observation history buffers
         self.obs_buf_queue.append(obs_single)
-        # append to the privileged observation history buffer
         if priv_single is not None and self.priv_obs_buf_queue.maxlen > 0:
             self.priv_obs_buf_queue.append(priv_single)
 
         # copy to the history buffer
-        # TODO BeyondMimic doesn't use history, remove it
+        # TODO verify whether history length of 1 equals not using history
         for key, history in self.history_buffer.items():
             if hasattr(self, key):
                 history.append(getattr(self, key).clone())
@@ -370,7 +379,7 @@ class LeggedRobotTask(AgentTask):
             _terminate_fn, _params = self.terminate_callback[_key]
             _terminate_flag = (_terminate_fn(self, env_states, **_params)).detach().clone().to(torch.bool)
             reset_buf = torch.logical_or(reset_buf, _terminate_flag)
-            self.episode_not_terminations[_key] += _terminate_flag.to(torch.float)
+            self.episode_not_terminated[_key] += _terminate_flag.to(torch.float)
         return reset_buf
 
     def _get_initial_states(self):
@@ -409,4 +418,4 @@ class LeggedRobotTask(AgentTask):
     @property
     def max_episode_steps(self):
         """Maximum episode length in steps."""
-        return math.ceil(self.cfg.episode_length_s / self.step_dt)
+        return math.ceil(self.cfg.max_episode_length_s / self.step_dt)
