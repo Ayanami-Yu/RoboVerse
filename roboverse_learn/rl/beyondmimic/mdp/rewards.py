@@ -3,24 +3,25 @@ from __future__ import annotations
 import torch
 
 from metasim.types import TensorState
-from metasim.utils.math import quat_error_magnitude
-
 from roboverse_pack.tasks.beyondmimic.base.types import EnvTypes
 from roboverse_learn.rl.beyondmimic.helper.utils import get_body_indexes, get_indexes_hash
 from roboverse_learn.rl.beyondmimic.configs.cfg_queries import ContactForces
+from roboverse_learn.rl.beyondmimic.helper.math import quat_error_magnitude
 
 
 # adapted from BeyondMimic rewards.py
 
 def motion_global_anchor_position_error_exp(env: EnvTypes, env_states: TensorState, std: float) -> torch.Tensor:
     robot_state = env_states.robots[env.name]
-    error = torch.sum(torch.square(env.commands.anchor_pos_w - robot_state.root_state[:, :3]), dim=-1)
+    anchor_index = env.commands.robot_anchor_body_index
+    error = torch.sum(torch.square(env.commands.anchor_pos_w - robot_state.body_state[:, anchor_index, :3]), dim=-1)
     return torch.exp(-error / std**2)
 
 
 def motion_global_anchor_orientation_error_exp(env: EnvTypes, env_states: TensorState, std: float) -> torch.Tensor:
     robot_state = env_states.robots[env.name]
-    error = quat_error_magnitude(env.commands.anchor_quat_w, robot_state.root_state[:, 3:7]) ** 2
+    anchor_index = env.commands.robot_anchor_body_index
+    error = quat_error_magnitude(env.commands.anchor_quat_w, robot_state.body_state[:, anchor_index, 3:7]) ** 2
     return torch.exp(-error / std**2)
 
 
@@ -28,7 +29,7 @@ def motion_relative_body_position_error_exp(
     env: EnvTypes, env_states: TensorState, std: float, body_names: list[str] | None = None
 ) -> torch.Tensor:
     body_state = env_states.robots[env.name].body_state[:, env.commands.body_indexes, :]
-    body_indexes = get_body_indexes(env.commands, body_names)  # TODO check whether the order is correct
+    body_indexes = get_body_indexes(env.commands, body_names)
     error = torch.sum(
         torch.square(env.commands.body_pos_relative_w[:, body_indexes] - body_state[:, body_indexes, :3]), dim=-1)
     return torch.exp(-error.mean(-1) / std**2)
@@ -71,10 +72,10 @@ def motion_global_body_angular_velocity_error_exp(
 
 # adapted from `isaaclab.envs.mdp.rewards.py`
 
-def action_rate_l2(env: EnvTypes, env_states: TensorState) -> torch.Tensor:  # TODO check where action is stored
+def action_rate_l2(env: EnvTypes, env_states: TensorState) -> torch.Tensor:
     """Penalize the rate of change of the actions using L2 squared kernel."""
     return torch.sum(
-        torch.square(env.actions - env.history_buffer["actions"][-1]), dim=1
+        torch.square(env.actions - env.history_buffer["actions"][-1]), dim=1  # NOTE `env.actions` is already in the original order
     )  # [n_envs, n_dims]
 
 
@@ -84,8 +85,8 @@ def joint_pos_limits(env: EnvTypes, env_states: TensorState) -> torch.Tensor:
     This is computed as a sum of the absolute value of the difference between the joint position and the soft limits.
     """
     robot_state = env_states.robots[env.name]
-    out_of_limits = -(robot_state.joint_pos - env.soft_dof_pos_limits[:, :, 0]).clip(max=0.0)
-    out_of_limits += (robot_state.joint_pos - env.soft_dof_pos_limits[:, :, 1]).clip(min=0.0)
+    out_of_limits = -(robot_state.joint_pos - env.soft_dof_pos_limits_sorted[:, :, 0]).clip(max=0.0)
+    out_of_limits += (robot_state.joint_pos - env.soft_dof_pos_limits_sorted[:, :, 1]).clip(min=0.0)
     return torch.sum(out_of_limits, dim=1)
 
 

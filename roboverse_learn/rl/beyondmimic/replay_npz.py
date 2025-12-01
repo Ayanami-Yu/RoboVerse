@@ -8,7 +8,7 @@
 
 """Launch Isaac Sim Simulator first."""
 
-# Example: python scripts/replay_npz.py --registry_name=ayanami-yu-bigai-org/wandb-registry-motions/dance1_subject2
+# Example: python roboverse_learn/rl/beyondmimic/replay_npz.py --registry_name=ayanami-yu-bigai-org/wandb-registry-motions/dance1_subject2
 
 import argparse
 import numpy as np
@@ -19,6 +19,7 @@ from isaaclab.app import AppLauncher
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Replay converted motions.")
 parser.add_argument("--registry_name", type=str, required=True, help="The name of the wand registry.")
+parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")  # TODO check if this is necessary to run in headless mode
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -41,8 +42,8 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 ##
 # Pre-defined configs
 ##
-from whole_body_tracking.robots.g1 import G1_CYLINDER_CFG
-from whole_body_tracking.tasks.tracking.mdp import MotionLoader
+from roboverse_pack.tasks.beyondmimic.robots.g1 import G1_CYLINDER_CFG
+from roboverse_learn.rl.beyondmimic.mdp.commands import MotionLoader  # NOTE this script displays motions correctly, so `MotionLoader` is probably not the root of problem
 
 
 @configclass
@@ -63,7 +64,6 @@ class ReplayMotionsSceneCfg(InteractiveSceneCfg):
     robot: ArticulationCfg = G1_CYLINDER_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
 
-# TODO adapt this to RoboVerse
 def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
     # Extract scene entities
     robot: Articulation = scene["robot"]

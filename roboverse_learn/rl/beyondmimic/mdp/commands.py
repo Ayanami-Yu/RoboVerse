@@ -86,6 +86,7 @@ class MotionCommand:
         # time left before resampling
         self.time_left = torch.zeros(env.num_envs, device=env.device)
 
+        self.robot_anchor_body_index = env.sorted_body_names.index(self.cfg.anchor_body_name)
         self.motion_anchor_body_index = self.cfg.body_names.index(self.cfg.anchor_body_name)
         self.body_indexes = torch.tensor(find_bodies(self.cfg.body_names, env.sorted_body_names, preserve_order=True)[0])
 
@@ -176,12 +177,14 @@ class MotionCommand:
         joint_pos = self.joint_pos.clone()
         joint_vel = self.joint_vel.clone()
         joint_pos += sample_uniform(*self.cfg.joint_position_range, joint_pos.shape, joint_pos.device)
-        soft_joint_pos_limits = self.env.soft_dof_pos_limits[env_ids]
+
+        soft_joint_pos_limits = self.env.soft_dof_pos_limits_original[env_ids]
+
         joint_pos[env_ids] = torch.clip(
             joint_pos[env_ids], soft_joint_pos_limits[:, :, 0], soft_joint_pos_limits[:, :, 1]
         )
-        env_states.robots[self.env.name].joint_pos[env_ids] = joint_pos[env_ids]
-        env_states.robots[self.env.name].joint_vel[env_ids] = joint_vel[env_ids]
+        env_states.robots[self.env.name].joint_pos[:, self.env.sorted_to_original_joint_indexes][env_ids] = joint_pos[env_ids]
+        env_states.robots[self.env.name].joint_vel[:, self.env.sorted_to_original_joint_indexes][env_ids] = joint_vel[env_ids]
         env_states.robots[self.env.name].root_state[env_ids, :] = torch.cat([root_pos[env_ids], root_ori[env_ids], root_lin_vel[env_ids], root_ang_vel[env_ids]], dim=-1)
         self.env.handler.set_states(env_states, env_ids)  # TODO test if this is correct
 
@@ -198,8 +201,8 @@ class MotionCommand:
         # put reference motion at the robot's XY (rotate it so its heading matches the robot's heading) while keeping the motion's height (Z)
         anchor_pos_w_repeat = self.anchor_pos_w[:, None, :].repeat(1, len(self.cfg.body_names), 1)  # [n_envs, n_bodies, 3], n_bodies = 14
         anchor_quat_w_repeat = self.anchor_quat_w[:, None, :].repeat(1, len(self.cfg.body_names), 1)  # [n_envs, n_bodies, 4]
-        robot_anchor_pos_w_repeat = robot_state.root_state[:, 0:3][:, None, :].repeat(1, len(self.cfg.body_names), 1)  # [n_envs, n_bodies, 3]
-        robot_anchor_quat_w_repeat = robot_state.root_state[:, 3:7][:, None, :].repeat(1, len(self.cfg.body_names), 1)  # [n_envs, n_bodies, 4]
+        robot_anchor_pos_w_repeat = robot_state.body_state[:, self.robot_anchor_body_index:self.robot_anchor_body_index + 1, 0:3].repeat(1, len(self.cfg.body_names), 1)  # [n_envs, n_bodies, 3]
+        robot_anchor_quat_w_repeat = robot_state.body_state[:, self.robot_anchor_body_index:self.robot_anchor_body_index + 1, 3:7].repeat(1, len(self.cfg.body_names), 1)  # [n_envs, n_bodies, 4]
 
         # let XY come from the robot anchor, and Z comes from the motion anchor
         # avoid penalizing global XY drift while preserving vertical posture from the motion
@@ -208,7 +211,7 @@ class MotionCommand:
 
         # first compute relative rotation between robot and motion anchors, then keep only the yaw component
         delta_ori_w = yaw_quat(quat_mul(robot_anchor_quat_w_repeat, quat_inv(anchor_quat_w_repeat)))
-        self.body_quat_relative_w = quat_mul(delta_ori_w, self.body_quat_w)
+        self.body_quat_relative_w = quat_mul(delta_ori_w, self.body_quat_w)  # original order
         self.body_pos_relative_w = delta_pos_w + quat_apply(delta_ori_w, self.body_pos_w - anchor_pos_w_repeat)
 
         self.bin_failed_count = (
@@ -219,10 +222,10 @@ class MotionCommand:
     def _update_metrics(self, env_states: TensorState):
         """Update metrics for logging."""
         robot_state = env_states.robots[self.env.name]
-        self.metrics["error_anchor_pos"] = torch.norm(self.anchor_pos_w - robot_state.root_state[:, :3], dim=-1)
-        self.metrics["error_anchor_rot"] = quat_error_magnitude(self.anchor_quat_w, robot_state.root_state[:, 3:7])
-        self.metrics["error_anchor_lin_vel"] = torch.norm(self.anchor_lin_vel_w - robot_state.root_state[:, 7:10], dim=-1)
-        self.metrics["error_anchor_ang_vel"] = torch.norm(self.anchor_ang_vel_w - robot_state.root_state[:, 10:13], dim=-1)
+        self.metrics["error_anchor_pos"] = torch.norm(self.anchor_pos_w - robot_state.body_state[:, self.robot_anchor_body_index, :3], dim=-1)
+        self.metrics["error_anchor_rot"] = quat_error_magnitude(self.anchor_quat_w, robot_state.body_state[:, self.robot_anchor_body_index, 3:7])
+        self.metrics["error_anchor_lin_vel"] = torch.norm(self.anchor_lin_vel_w - robot_state.body_state[:, self.robot_anchor_body_index, 7:10], dim=-1)
+        self.metrics["error_anchor_ang_vel"] = torch.norm(self.anchor_ang_vel_w - robot_state.body_state[:, self.robot_anchor_body_index, 10:13], dim=-1)
 
         self.metrics["error_body_pos"] = torch.norm(self.body_pos_relative_w - robot_state.body_state[:, self.body_indexes, :3], dim=-1).mean(
             dim=-1
@@ -238,8 +241,8 @@ class MotionCommand:
             dim=-1
         )
 
-        self.metrics["error_joint_pos"] = torch.norm(self.joint_pos - robot_state.joint_pos, dim=-1)
-        self.metrics["error_joint_vel"] = torch.norm(self.joint_vel - robot_state.joint_vel, dim=-1)
+        self.metrics["error_joint_pos"] = torch.norm(self.joint_pos - robot_state.joint_pos[:, self.env.sorted_to_original_joint_indexes], dim=-1)
+        self.metrics["error_joint_vel"] = torch.norm(self.joint_vel - robot_state.joint_vel[:, self.env.sorted_to_original_joint_indexes], dim=-1)
 
     def reset(self, env_ids: Sequence[int] | None = None):
         if env_ids is None:

@@ -562,6 +562,7 @@ def yaw_quat(quat: torch.Tensor) -> torch.Tensor:
     return quat_yaw.view(shape)
 
 
+# same as isaaclab.utils.math.quat_apply
 @torch.jit.script
 def quat_apply(quat: torch.Tensor, vec: torch.Tensor) -> torch.Tensor:
     """Apply a quaternion rotation to a vector.

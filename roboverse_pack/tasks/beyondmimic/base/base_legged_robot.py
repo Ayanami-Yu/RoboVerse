@@ -10,6 +10,7 @@ import torch
 from metasim.scenario.scenario import ScenarioCfg
 from metasim.utils.state import TensorState
 from roboverse_learn.rl.beyondmimic.configs.cfg_base import BaseEnvCfg
+from roboverse_learn.rl.beyondmimic.helper.string_utils import find_bodies
 from roboverse_learn.rl.beyondmimic.helper.utils import (
     get_axis_params,
     pattern_match,
@@ -65,6 +66,10 @@ class LeggedRobotTask(AgentTask):
         """Parse default joint positions and torque limits from cfg."""
         robot: G1Dof12Cfg | Go2Cfg = self.robot
         sorted_joint_names: list[str] = self.sorted_joint_names
+        original_joint_names: list[str] = self.handler.get_joint_names(self.robot.name, sort=False)
+        self.sorted_to_original_joint_indexes = torch.tensor(
+            find_bodies(original_joint_names, sorted_joint_names, preserve_order=True)[0], device=self.device
+        )
 
         torque_limits = (
             robot.torque_limits
@@ -107,7 +112,10 @@ class LeggedRobotTask(AgentTask):
         soft_dof_pos_limits = torch.zeros_like(self.dof_pos_limits, device=self.device)
         soft_dof_pos_limits[:, 0] = _mid - 0.5 * _diff * soft_limit_factor
         soft_dof_pos_limits[:, 1] = _mid + 0.5 * _diff * soft_limit_factor
-        self.soft_dof_pos_limits = soft_dof_pos_limits.unsqueeze(0).repeat(self.num_envs, 1, 1)  # (n_envs, n_dofs, 2)
+        self.soft_dof_pos_limits_sorted = soft_dof_pos_limits.unsqueeze(0).repeat(
+            self.num_envs, 1, 1
+        )  # (n_envs, n_dofs, 2)
+        self.soft_dof_pos_limits_original = self.soft_dof_pos_limits_sorted[:, self.sorted_to_original_joint_indexes, :]
 
         dof_vel_limits = getattr(
             robot,
@@ -289,6 +297,7 @@ class LeggedRobotTask(AgentTask):
         if actions.ndim == 1:
             actions = actions.unsqueeze(0)
 
+        # NOTE `self.actions` in in the original order since it's computed inside `OnPolicyRunner`
         actions = self._pre_physics_step(actions)
         self.actions[:] = actions
         processed_actions = (  # TODO modify action scale according to BeyondMimic
@@ -302,6 +311,9 @@ class LeggedRobotTask(AgentTask):
             env_states = self._physics_step(applied_action)
 
         self._post_physics_step(env_states)
+
+        # NOTE for RSL-RL v2.3.0
+        self.extras["observations"] = {"policy": self.obs_buf, "critic": self.priv_obs_buf}
 
         return (
             self.obs_buf,

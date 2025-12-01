@@ -50,4 +50,5 @@ class RslRlVecEnvWrapper:
 
     @property
     def obs_buf(self) -> TensorDict:
+        # NOTE this returns both policy and privileged obs, but `AgentTask.obs_buf()` only returns policy obs (a 2D tensor)
         return TensorDict(policy=self.env.obs_buf, critic=self.env.priv_obs_buf)
