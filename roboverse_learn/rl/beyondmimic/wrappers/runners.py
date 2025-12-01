@@ -1,7 +1,7 @@
 from roboverse_pack.tasks.beyondmimic.base import AgentTask
 from roboverse_pack.tasks.beyondmimic.base.types import EnvTypes
 
-from .environment import RslRlEnvWrapper
+from .environment import RslRlVecEnvWrapper
 from .on_policy_runner import MotionOnPolicyRunner  # TODO check if this is also ok for evaluation
 
 
@@ -28,7 +28,7 @@ class RslRlWrapper(BaseWrapper):
     def __init__(self, env: AgentTask, train_cfg: dict, log_dir: str, registry_name: str = None):
         super().__init__(env, train_cfg, log_dir)
 
-        self.env_wrapper = RslRlEnvWrapper(self.env)
+        self.env_wrapper = RslRlVecEnvWrapper(self.env)
         self.runner = MotionOnPolicyRunner(
             env=self.env_wrapper,
             train_cfg=self.train_cfg,

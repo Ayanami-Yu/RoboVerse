@@ -94,7 +94,7 @@ class RewardsCfg:
     motion_body_ang_vel = RewTerm(func=rewards.motion_global_body_angular_velocity_error_exp, weight=1.0, params={"std": 3.14})
     action_rate_l2 = RewTerm(func=rewards.action_rate_l2, weight=-1e-1)
     joint_limit = RewTerm(func=rewards.joint_pos_limits, weight=-10.0)
-    undesired_contacts = RewTerm(func=rewards.undesired_contacts, weight=-0.1, params={"threshold": 1.0, "body_names": [r"^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)(?!left_wrist_yaw_link$)(?!right_wrist_yaw_link$).+$"]})  # TODO check if `body_names` is correctly parsed
+    undesired_contacts = RewTerm(func=rewards.undesired_contacts, weight=-0.1, params={"threshold": 1.0, "body_names": r"^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)(?!left_wrist_yaw_link$)(?!right_wrist_yaw_link$).+$"})  # TODO check if `body_names` is correctly parsed
 
 
 @configclass

@@ -17,7 +17,7 @@ def time_out(env: EnvTypes, env_states: TensorState) -> torch.Tensor:
     return env._episode_steps >= env.max_episode_steps
 
 
-# adapted from BeyondMimic terminations.py  # TODO
+# adapted from BeyondMimic terminations.py
 
 def bad_anchor_pos_z_only(env: EnvTypes, env_states: TensorState, threshold: float) -> torch.Tensor:
     robot_state = env_states.robots[env.name]
@@ -34,7 +34,7 @@ def bad_anchor_ori(env: EnvTypes, env_states: TensorState, threshold: float) -> 
 
 
 def bad_motion_body_pos_z_only(env: EnvTypes, env_states: TensorState, threshold: float, body_names: list[str]) -> torch.Tensor:
-    robot_state = env_states.robots[env.name]
+    body_state = env_states.robots[env.name].body_state[:, env.commands.body_indexes, :]
     body_indexes = get_body_indexes(env.commands, body_names)
-    error = torch.abs(env.commands.body_pos_relative_w[:, body_indexes, 2] - robot_state.body_state[:, body_indexes, 2])
+    error = torch.abs(env.commands.body_pos_relative_w[:, body_indexes, 2] - body_state[:, body_indexes, 2])
     return torch.any(error > threshold, dim=-1)

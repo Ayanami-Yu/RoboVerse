@@ -7,17 +7,18 @@ from tensordict import TensorDict
 from roboverse_pack.tasks.beyondmimic.base import EnvTypes
 
 
-class RslRlEnvWrapper:
+class RslRlVecEnvWrapper:
     def __init__(self, env: EnvTypes, train_cfg: dict | object = None):
         self.env = env
         self.train_cfg = train_cfg
 
     def step(self, actions: torch.Tensor) -> tuple[torch.Tensor, Union[torch.Tensor, None], torch.Tensor, torch.Tensor, dict]:
         _ = self.env.step(actions)
-        return self.obs_buf, self.env.rew_buf, self.env.reset_buf, self.env.extras
+        return self.obs_buf["policy"], self.env.rew_buf, self.env.reset_buf, self.env.extras
 
     def get_observations(self) -> TensorDict:
-        return self.obs_buf
+        # return self.obs_buf  # FIXME this is for RSL-RL 3.1.1
+        return self.obs_buf["policy"], {"observations": {"policy": self.obs_buf["policy"], "critic": self.obs_buf["critic"]}}  # NOTE this aligns with RSL-RL 2.3.0 used by `RslRlVecEnvWrapper` in Isaac Lab v2.1.0
 
     @property
     def num_envs(self):

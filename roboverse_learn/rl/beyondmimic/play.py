@@ -5,7 +5,6 @@ import copy
 import pathlib
 import torch
 import rootutils
-from datetime import datetime
 
 rootutils.setup_root(__file__, pythonpath=True)
 
@@ -17,8 +16,7 @@ except ImportError:
 from metasim.scenario.scenario import ScenarioCfg
 from metasim.task.registry import get_task_class
 
-from roboverse_pack.tasks.beyondmimic.base.types import EnvTypes
-from roboverse_learn.rl.beyondmimic.wrappers import EnvWrapperTypes, MasterRunner
+from roboverse_learn.rl.beyondmimic.wrappers import MasterRunner
 from roboverse_learn.rl.beyondmimic.helper.utils import get_args, make_objects, make_robots, set_seed, get_checkpoint_path
 from roboverse_learn.rl.beyondmimic.helper.exporter import export_motion_policy_as_onnx, attach_onnx_metadata
 
@@ -103,8 +101,8 @@ def play(args):
     export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
     export_motion_policy_as_onnx(
         env,
-        runner.alg.policy,
-        normalizer=runner.obs_normalizer,
+        runner.runner.alg.policy,
+        normalizer=runner.runner.obs_normalizer,
         path=export_model_dir,
         filename="policy.onnx",
     )

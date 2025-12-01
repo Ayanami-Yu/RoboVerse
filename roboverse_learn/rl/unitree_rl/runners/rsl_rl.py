@@ -94,7 +94,7 @@ class RslRlEnvWrapper:
         raise
 
     def step(self, actions: torch.Tensor) -> tuple[torch.Tensor, Union[torch.Tensor, None], torch.Tensor, torch.Tensor, dict]:
-        _ = self.env.step(actions)
+        _ = self.env.step(actions)  # self.env -> WalkG1Dof29Task
         return self.obs_buf, self.env.rew_buf, self.env.reset_buf, self.env.extras
 
     def get_observations(self) -> TensorDict:
@@ -137,7 +137,8 @@ class RslRlEnvWrapper:
 class RslRlWrapper(BaseRunnerWrapper):  # NOTE the runner class in MasterRunner
     def __init__(self, env: AgentTask, train_cfg: dict, log_dir:str):
         super().__init__(env, train_cfg, log_dir)
-        from rsl_rl.runners import OnPolicyRunner, DistillationRunner  # TODO is DistillationRunner the only reason why unitree_rl uses RSL-RL 3.1.1?
+        # from rsl_rl.runners import OnPolicyRunner, DistillationRunner  # TODO is DistillationRunner the only reason why unitree_rl uses RSL-RL 3.1.1?
+        from rsl_rl.runners import OnPolicyRunner
 
         self.env_wrapper = RslRlEnvWrapper(self.env)
         self.runner = OnPolicyRunner(  # TODO is this also used in eval? and check configs

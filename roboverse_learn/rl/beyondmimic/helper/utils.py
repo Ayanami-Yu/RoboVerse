@@ -171,15 +171,15 @@ def hash_names(names: str | tuple[str]) -> str:
     return hash_key
 
 
-# def get_indexes(  # TODO remove this if it's not used
-#     env: EnvTypes, sub_names: tuple[str] | str, all_names: list[str] | tuple[str]
-# ):
-#     hash_key = hash_names(sub_names)
-#     if hash_key not in env.extras_buffer:
-#         env.extras_buffer[hash_key] = get_indexes_from_substring(
-#             sub_names, all_names, fullmatch=True
-#         ).to(env.device)
-#     return env.extras_buffer[hash_key]
+def get_indexes_hash(  # used by `undesired_contacts()`
+    env: EnvTypes, sub_names: tuple[str] | str, all_names: list[str] | tuple[str]
+):
+    hash_key = hash_names(sub_names)
+    if hash_key not in env.extras_buffer:
+        env.extras_buffer[hash_key] = get_indexes_from_substring(
+            sub_names, all_names, fullmatch=True
+        ).to(env.device)
+    return env.extras_buffer[hash_key]
 
 
 def get_body_indexes(command: MotionCommand, body_names: list[str] | None = None) -> list[int]:

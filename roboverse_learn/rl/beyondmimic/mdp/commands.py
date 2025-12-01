@@ -89,7 +89,11 @@ class MotionCommand:
         self.motion_anchor_body_index = self.cfg.body_names.index(self.cfg.anchor_body_name)
         self.body_indexes = torch.tensor(find_bodies(self.cfg.body_names, env.sorted_body_names, preserve_order=True)[0])
 
-        self.motion = MotionLoader(cfg.motion_file, self.body_indexes, env.device)
+        # load motions
+        body_names_original = env.handler.get_body_names(env.robot.name, sort=False)
+        body_indexes_original = torch.tensor(find_bodies(self.cfg.body_names, body_names_original, preserve_order=True)[0])
+        self.motion = MotionLoader(cfg.motion_file, body_indexes_original, env.device)
+
         self.time_steps = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
         self.body_pos_relative_w = torch.zeros(env.num_envs, len(self.cfg.body_names), 3, device=env.device)
         self.body_quat_relative_w = torch.zeros(env.num_envs, len(self.cfg.body_names), 4, device=env.device)
@@ -181,7 +185,7 @@ class MotionCommand:
         env_states.robots[self.env.name].root_state[env_ids, :] = torch.cat([root_pos[env_ids], root_ori[env_ids], root_lin_vel[env_ids], root_ang_vel[env_ids]], dim=-1)
         self.env.handler.set_states(env_states, env_ids)  # TODO test if this is correct
 
-    def _update_command(self, env_states: TensorState):  # TODO change corresponding entries
+    def _update_command(self, env_states: TensorState):
         # pick new time steps using adaptive sampling for the envs that have reached the end of the motion
         self.time_steps += 1
         env_ids = torch.where(self.time_steps >= self.motion.time_step_total)[0]

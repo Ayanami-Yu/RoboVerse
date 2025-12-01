@@ -85,6 +85,5 @@ class MasterRunner:
         self.policies = {}
         for _robot_name, _runner in self.runners.items():
             _runner.load(resume_path)
-            # self.policies[_robot_name] = _runner.get_policy()  # TODO difference between `get_inference_policy()`?
-            self.policies[_robot_name] = _runner.get_inference_policy()
+            self.policies[_robot_name] = _runner.get_policy()
         return self.policies

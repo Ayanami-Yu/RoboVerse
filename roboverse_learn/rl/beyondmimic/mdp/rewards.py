@@ -6,7 +6,7 @@ from metasim.types import TensorState
 from metasim.utils.math import quat_error_magnitude
 
 from roboverse_pack.tasks.beyondmimic.base.types import EnvTypes
-from roboverse_learn.rl.beyondmimic.helper.utils import get_body_indexes
+from roboverse_learn.rl.beyondmimic.helper.utils import get_body_indexes, get_indexes_hash
 from roboverse_learn.rl.beyondmimic.configs.cfg_queries import ContactForces
 
 
@@ -27,21 +27,20 @@ def motion_global_anchor_orientation_error_exp(env: EnvTypes, env_states: Tensor
 def motion_relative_body_position_error_exp(
     env: EnvTypes, env_states: TensorState, std: float, body_names: list[str] | None = None
 ) -> torch.Tensor:
-    robot_state = env_states.robots[env.name]
+    body_state = env_states.robots[env.name].body_state[:, env.commands.body_indexes, :]
     body_indexes = get_body_indexes(env.commands, body_names)  # TODO check whether the order is correct
     error = torch.sum(
-        torch.square(env.commands.body_pos_relative_w[:, body_indexes] - robot_state.body_state[:, body_indexes, :3]), dim=-1
-    )
+        torch.square(env.commands.body_pos_relative_w[:, body_indexes] - body_state[:, body_indexes, :3]), dim=-1)
     return torch.exp(-error.mean(-1) / std**2)
 
 
 def motion_relative_body_orientation_error_exp(
     env: EnvTypes, env_states: TensorState, std: float, body_names: list[str] | None = None
 ) -> torch.Tensor:
-    robot_state = env_states.robots[env.name]
+    body_state = env_states.robots[env.name].body_state[:, env.commands.body_indexes, :]
     body_indexes = get_body_indexes(env.commands, body_names)
     error = (
-        quat_error_magnitude(env.commands.body_quat_relative_w[:, body_indexes], robot_state.body_state[:, body_indexes, 3:7])
+        quat_error_magnitude(env.commands.body_quat_relative_w[:, body_indexes], body_state[:, body_indexes, 3:7])
         ** 2
     )
     return torch.exp(-error.mean(-1) / std**2)
@@ -51,10 +50,10 @@ def motion_global_body_linear_velocity_error_exp(
     env: EnvTypes, env_states: TensorState, std: float, body_names: list[str] | None = None
 ) -> torch.Tensor:
     """Linear velocity tracking error."""
-    robot_state = env_states.robots[env.name]
+    body_state = env_states.robots[env.name].body_state[:, env.commands.body_indexes, :]
     body_indexes = get_body_indexes(env.commands, body_names)
     error = torch.sum(
-        torch.square(env.commands.body_lin_vel_w[:, body_indexes] - robot_state.body_state[:, body_indexes, 7:10]), dim=-1
+        torch.square(env.commands.body_lin_vel_w[:, body_indexes] - body_state[:, body_indexes, 7:10]), dim=-1
     )
     return torch.exp(-error.mean(-1) / std**2)
 
@@ -62,10 +61,10 @@ def motion_global_body_linear_velocity_error_exp(
 def motion_global_body_angular_velocity_error_exp(
     env: EnvTypes, env_states: TensorState, std: float, body_names: list[str] | None = None
 ) -> torch.Tensor:
-    robot_state = env_states.robots[env.name]
+    body_state = env_states.robots[env.name].body_state[:, env.commands.body_indexes, :]
     body_indexes = get_body_indexes(env.commands, body_names)
     error = torch.sum(
-        torch.square(env.commands.body_ang_vel_w[:, body_indexes] - robot_state.body_state[:, body_indexes, 10:13]), dim=-1
+        torch.square(env.commands.body_ang_vel_w[:, body_indexes] - body_state[:, body_indexes, 10:13]), dim=-1
     )
     return torch.exp(-error.mean(-1) / std**2)
 
@@ -97,11 +96,12 @@ def undesired_contacts(  # TODO check if this is correct
     body_names: str | tuple[str] = "(?!.*ankle.*).*",
 ) -> torch.Tensor:
     """Penalize undesired contacts as the number of violations that are above a threshold."""
-    body_indexes = get_body_indexes(env.commands, body_names)
+    # body_indexes = get_body_indexes(env.commands, body_names)
+    indexes = get_indexes_hash(env, body_names, env_states.robots[env.name].body_names)
     contact_forces: ContactForces = env_states.extras["contact_forces"][env.name]
     is_contact = (
         # TODO check correspondence with `contact_sensor.data.net_forces_w_history`
-        contact_forces.contact_forces_history[:, :, body_indexes, :]  # [n_envs, history_length, n_bodies, 3] -> [n_envs, 3, 30, 3]
+        contact_forces.contact_forces_history[:, :, indexes, :]  # [n_envs, history_length, n_indexes, 3] -> [n_envs, 3, 26, 3]
         .norm(dim=-1)
         .max(dim=1)[0]
         > threshold
