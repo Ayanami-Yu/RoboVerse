@@ -70,10 +70,13 @@ class LeggedRobotTask(AgentTask):
         self.sorted_to_original_joint_indexes = torch.tensor(
             find_bodies(original_joint_names, sorted_joint_names, preserve_order=True)[0], device=self.device
         )
+        self.original_to_sorted_joint_indexes = torch.tensor(
+            find_bodies(sorted_joint_names, original_joint_names, preserve_order=True)[0], device=self.device
+        )
 
-        torque_limits = (
+        torque_limits = (  # TODO check its order
             robot.torque_limits
-            if hasattr(robot, "torque_limits")
+            if hasattr(robot, "torque_limits")  # False
             else {name: actuator_cfg.torque_limit for name, actuator_cfg in robot.actuators.items()}
         )
 
@@ -297,12 +300,14 @@ class LeggedRobotTask(AgentTask):
         if actions.ndim == 1:
             actions = actions.unsqueeze(0)
 
-        # NOTE `self.actions` in in the original order since it's computed inside `OnPolicyRunner`
+        # NOTE `self.actions` is in the original order since it's computed inside `OnPolicyRunner`
         actions = self._pre_physics_step(actions)
-        self.actions[:] = actions
+        self.actions[:] = actions  # original order
         processed_actions = (  # TODO modify action scale according to BeyondMimic
-            (self.actions * self.action_scale + self.actions_offset).clip(-self.action_clip, self.action_clip).clone()
-        )
+            (self.actions * self.action_scale + self.actions_offset)
+            .clip(-self.action_clip, self.action_clip)
+            .clone()[:, self.original_to_sorted_joint_indexes]
+        )  # sorted order
         env_states = self.get_states()
         for _ in range(self.decimation):
             applied_action = (
@@ -369,19 +374,12 @@ class LeggedRobotTask(AgentTask):
             # TODO multiply `step_dt` or not
             if term_cfg["params"]:
                 value = term_cfg["func"](self, env_states, **term_cfg["params"]) * term_cfg["weight"] * self.step_dt
+                # value = term_cfg["func"](self, env_states, **term_cfg["params"]) * term_cfg["weight"]
             else:
                 value = term_cfg["func"](self, env_states) * term_cfg["weight"] * self.step_dt
+                # value = term_cfg["func"](self, env_states) * term_cfg["weight"]
             rew_buf += value  # update total reward
             self.episode_rewards[name] += value  # update episodic sum
-
-        # TODO if the followings are not used then remove them
-        # unitree_rl
-        # if self.cfg.rewards.only_positive_rewards:
-        #     rew_buf[:] = torch.clip(rew_buf[:], min=0.0)
-
-        # Isaac Lab
-        # update current reward for this step.
-        #     self._step_reward[:, self._term_names.index(name)] = value / dt
 
         return rew_buf
 

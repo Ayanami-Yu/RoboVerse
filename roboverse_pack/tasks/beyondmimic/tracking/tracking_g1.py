@@ -33,7 +33,7 @@ class TrackingG1Task(LeggedRobotTask):
         simulator="isaaclab",
         headless=True,
         env_spacing=2.5,
-        decimation=4,
+        decimation=1,  # NOTE task-level decimation is defined in `self.cfg.control`
         sim_params=SimParamCfg(
             dt=0.005,
             substeps=1,

@@ -374,7 +374,7 @@ class LeggedRobotTask(AgentTask):
             scale, params = self.reward_scales[name]
             rew = scale * func(self, env_states, **params)
             rew_buf += rew  # [n_envs,]
-            self.episode_rewards[name] += rew  # [n_envs,]  # TODO check where else `episode_rewards` is used
+            self.episode_rewards[name] += rew  # [n_envs,]
 
         if self.cfg.rewards.only_positive_rewards:
             rew_buf[:] = torch.clip(rew_buf[:], min=0.0)
