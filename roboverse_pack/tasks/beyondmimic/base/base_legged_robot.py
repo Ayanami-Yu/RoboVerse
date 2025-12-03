@@ -16,7 +16,7 @@ from roboverse_learn.rl.beyondmimic.helper.utils import (
     pattern_match,
 )
 from roboverse_learn.rl.beyondmimic.mdp.commands import MotionCommand
-from roboverse_pack.robots import G1Dof12Cfg, Go2Cfg
+from roboverse_pack.robots.g1_tracking import G1TrackingCfg
 
 from .base_agent import AgentTask
 
@@ -36,9 +36,10 @@ class LeggedRobotTask(AgentTask):
         self.sim_dt = self.scenario.sim_params.dt
         self.sorted_body_names = self.handler.get_body_names(self.name, sort=True)
         self.sorted_joint_names = self.handler.get_joint_names(self.name, sort=True)
+        self.original_joint_names = self.handler.get_joint_names(self.name, sort=False)
 
-        self._instantiate_cfg(self.cfg)
         self._init_joint_cfg()
+        self._instantiate_cfg(self.cfg)
         self._init_buffers()
         self._setup()
         self.reset()
@@ -56,48 +57,59 @@ class LeggedRobotTask(AgentTask):
         # value assignments from configs
         self.decimation = self.cfg.control.decimation
         self.step_dt = self.sim_dt * self.decimation
+
+        # NOTE actions, action scale, and action offset are in the original order
         self.action_clip = self.cfg.control.action_clip
-        self.action_scale = self.cfg.control.action_scale
+        self.action_offset = self.default_dof_pos_original.clone() if self.cfg.control.action_offset else 0.0
+        if hasattr(self.robot, "action_scale"):  # per-actuator action scale
+            self.action_scale = (
+                torch.tensor(list(self.robot.action_scale.values()), device=self.device)
+                .unsqueeze(0)
+                .repeat(self.num_envs, 1)
+            )
+        else:
+            self.action_scale = self.cfg.control.action_scale
 
         self.common_step_counter = 0
         self.commands = MotionCommand(env=self, cfg=self.cfg.commands)
 
     def _init_joint_cfg(self):
         """Parse default joint positions and torque limits from cfg."""
-        robot: G1Dof12Cfg | Go2Cfg = self.robot
+        robot: G1TrackingCfg = self.robot
         sorted_joint_names: list[str] = self.sorted_joint_names
-        original_joint_names: list[str] = self.handler.get_joint_names(self.robot.name, sort=False)
+        original_joint_names: list[str] = self.original_joint_names
+
         self.sorted_to_original_joint_indexes = torch.tensor(
             find_bodies(original_joint_names, sorted_joint_names, preserve_order=True)[0], device=self.device
         )
         self.original_to_sorted_joint_indexes = torch.tensor(
             find_bodies(sorted_joint_names, original_joint_names, preserve_order=True)[0], device=self.device
         )
+        # NOTE `torque_limits` should be in sorted order since it's used in `_compute_effort()`
+        # torque_limits = (  # TODO not used, remove it
+        #     robot.torque_limits
+        #     if hasattr(robot, "torque_limits")
+        #     else {name: actuator_cfg.torque_limit for name, actuator_cfg in robot.actuators.items()}
+        # )
 
-        torque_limits = (  # TODO check its order
-            robot.torque_limits
-            if hasattr(robot, "torque_limits")  # False
-            else {name: actuator_cfg.torque_limit for name, actuator_cfg in robot.actuators.items()}
-        )
+        # sorted_limits = [torque_limits[name] for name in sorted_joint_names]
+        # self.torque_limits = (
+        #     torch.tensor(sorted_limits, device=self.device) * self.cfg.control.torque_limits_factor
+        # )  # (n_dof,)
 
-        sorted_limits = [torque_limits[name] for name in sorted_joint_names]
-        self.torque_limits = (
-            torch.tensor(sorted_limits, device=self.device) * self.cfg.control.torque_limits_factor
-        )  # (n_dof,)
+        # p_gains = []
+        # d_gains = []
+        # for name in sorted_joint_names:
+        #     actuator_cfg = robot.actuators[name]
+        #     p_gains.append(actuator_cfg.stiffness if actuator_cfg.stiffness is not None else 0.0)
+        #     d_gains.append(actuator_cfg.damping if actuator_cfg.damping is not None else 0.0)
 
-        p_gains = []
-        d_gains = []
-        for name in sorted_joint_names:
-            actuator_cfg = robot.actuators[name]
-            p_gains.append(actuator_cfg.stiffness if actuator_cfg.stiffness is not None else 0.0)
-            d_gains.append(actuator_cfg.damping if actuator_cfg.damping is not None else 0.0)
-
-        self.p_gains = torch.tensor(p_gains, device=self.device)
-        self.d_gains = torch.tensor(d_gains, device=self.device)
+        # self.p_gains = torch.tensor(p_gains, device=self.device)
+        # self.d_gains = torch.tensor(d_gains, device=self.device)
 
         # check if manual PD control is needed (if any joints use effort control)
-        control_types = robot.control_type
-        self.manual_pd_on = any(mode == "effort" for mode in control_types.values()) if control_types else False
+        # control_type = getattr(robot, "control_type", None)  # TODO consider keeping this or not
+        # self.manual_pd_on = any(mode == "effort" for mode in control_type.values()) if control_type else False
 
         dof_pos_limits = robot.joint_limits
         sorted_dof_pos_limits = [dof_pos_limits[joint] for joint in sorted_joint_names]
@@ -123,7 +135,7 @@ class LeggedRobotTask(AgentTask):
         dof_vel_limits = getattr(
             robot,
             "joint_velocity_limits",
-            [getattr(robot.actuators[name], "velocity_limit", torch.inf) for name in sorted_joint_names],
+            [getattr(robot.actuators[name], "velocity_limit_sim", torch.inf) for name in sorted_joint_names],
         )
         self.dof_vel_limits = torch.tensor(dof_vel_limits, device=self.device)  # (n_dofs, 2)
         self.soft_dof_vel_limits = self.dof_vel_limits * getattr(
@@ -138,7 +150,8 @@ class LeggedRobotTask(AgentTask):
         default_joint_pos = pattern_match(default_joint_pos, sorted_joint_names)
         sorted_joint_pos = [default_joint_pos[name] for name in sorted_joint_names]
         default_dof_pos = torch.tensor(sorted_joint_pos, device=self.device)  # (n_dofs,)
-        self.default_dof_pos = default_dof_pos.unsqueeze(0).repeat(self.num_envs, 1)  # (n_envs, n_dofs)
+        self.default_dof_pos_sorted = default_dof_pos.unsqueeze(0).repeat(self.num_envs, 1)  # (n_envs, n_dofs)
+        self.default_dof_pos_original = self.default_dof_pos_sorted[:, self.sorted_to_original_joint_indexes]
 
         default_joint_vel = getattr(robot, "default_joint_velocities", 0)
         if isinstance(default_joint_vel, dict):
@@ -156,7 +169,7 @@ class LeggedRobotTask(AgentTask):
         for pre_fn, _params in self.pre_physics_step_callback.values():
             pre_fn(self, **_params)
         # NOTE corresponds to action clipping in `RslRlVecEnvWrapper.step()` in Isaac Lab
-        return torch.clip(actions, -self.action_clip, self.action_clip)
+        return torch.clip(actions, -self.action_clip, self.action_clip) if self.action_clip else actions
 
     def _init_buffers(self):
         self.actions = torch.zeros(
@@ -164,7 +177,6 @@ class LeggedRobotTask(AgentTask):
             dtype=torch.float,
             device=self.device,
         )
-        self.actions_offset = self.default_dof_pos.clone() if self.cfg.control.action_offset else 0.0
 
         self.rew_buf = torch.zeros(size=(self.num_envs,), dtype=torch.float, device=self.device)
         self.reset_buf = torch.zeros(
@@ -218,18 +230,18 @@ class LeggedRobotTask(AgentTask):
             for name in asdict(self.cfg.rewards).keys()
         }
 
-    def _compute_effort(self, actions: torch.Tensor, env_states: TensorState) -> torch.Tensor:
-        """Compute effort from actions using PD control."""
-        # get current joint positions and velocities
-        sorted_dof_pos = env_states.robots[self.name].joint_pos
-        sorted_dof_vel = env_states.robots[self.name].joint_vel
-
-        # compute PD control effort
-        effort = self.p_gains * (actions - sorted_dof_pos) - self.d_gains * sorted_dof_vel
-
-        # apply torque limits
-        effort = torch.clip(effort, -self.torque_limits, self.torque_limits)
-        return effort.to(torch.float32)
+    # def _compute_effort(self, actions: torch.Tensor, env_states: TensorState) -> torch.Tensor:
+    #     """Compute effort from actions using PD control."""
+    #     # get current joint positions and velocities
+    #     sorted_dof_pos = env_states.robots[self.name].joint_pos
+    #     sorted_dof_vel = env_states.robots[self.name].joint_vel
+    #
+    #     # compute PD control effort
+    #     effort = self.p_gains * (actions - sorted_dof_pos) - self.d_gains * sorted_dof_vel
+    #
+    #     # apply torque limits
+    #     effort = torch.clip(effort, -self.torque_limits, self.torque_limits)
+    #     return effort.to(torch.float32)
 
     def reset(self, env_ids: torch.Tensor | list[int] | None = None):
         """Reset selected envs (defaults to all)."""
@@ -303,17 +315,19 @@ class LeggedRobotTask(AgentTask):
         # NOTE `self.actions` is in the original order since it's computed inside `OnPolicyRunner`
         actions = self._pre_physics_step(actions)
         self.actions[:] = actions  # original order
-        processed_actions = (  # TODO modify action scale according to BeyondMimic
-            (self.actions * self.action_scale + self.actions_offset)
-            .clip(-self.action_clip, self.action_clip)
-            .clone()[:, self.original_to_sorted_joint_indexes]
-        )  # sorted order
-        env_states = self.get_states()
+        processed_actions = self.actions * self.action_scale + self.action_offset
+        if self.action_clip is not None:
+            processed_actions = processed_actions.clip(-self.action_clip, self.action_clip)
+        processed_actions = processed_actions.clone()[:, self.original_to_sorted_joint_indexes]  # sorted order
+
+        # env_states = self.get_states()  # TODO verify current impl and remove this
+        # for _ in range(self.decimation):
+        #     applied_action = (
+        #         self._compute_effort(processed_actions, env_states) if self.manual_pd_on else processed_actions
+        #     )
+        #     env_states = self._physics_step(applied_action)
         for _ in range(self.decimation):
-            applied_action = (
-                self._compute_effort(processed_actions, env_states) if self.manual_pd_on else processed_actions
-            )
-            env_states = self._physics_step(applied_action)
+            env_states = self._physics_step(processed_actions)
 
         self._post_physics_step(env_states)
 
@@ -374,10 +388,8 @@ class LeggedRobotTask(AgentTask):
             # TODO multiply `step_dt` or not
             if term_cfg["params"]:
                 value = term_cfg["func"](self, env_states, **term_cfg["params"]) * term_cfg["weight"] * self.step_dt
-                # value = term_cfg["func"](self, env_states, **term_cfg["params"]) * term_cfg["weight"]
             else:
                 value = term_cfg["func"](self, env_states) * term_cfg["weight"] * self.step_dt
-                # value = term_cfg["func"](self, env_states) * term_cfg["weight"]
             rew_buf += value  # update total reward
             self.episode_rewards[name] += value  # update episodic sum
 

@@ -141,7 +141,7 @@ class TrackingG1EnvCfg(BaseEnvCfg):
     # TODO check if these physics params have the same effect in both Isaac Lab and Metasim
     callbacks_setup = {
         "material_randomizer": MaterialRandomizer(
-            obj_name="g1_dof29",
+            obj_name="g1_tracking",
             static_friction_range=(0.3, 1.6),
             dynamic_friction_range=(0.3, 1.2),
             restitution_range=(0.0, 0.5),
@@ -149,7 +149,7 @@ class TrackingG1EnvCfg(BaseEnvCfg):
         ),
         # TODO change `MassRandomizer` to `randomize_rigid_body_com()` from BeyondMimic
         "mass_randomizer": MassRandomizer(
-            obj_name="g1_dof29",
+            obj_name="g1_tracking",
             body_names="torso_link",
             mass_distribution_params=(-1.0, 3.0),  # TODO change this
             operation="add",

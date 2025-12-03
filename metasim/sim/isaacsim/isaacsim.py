@@ -470,7 +470,7 @@ class IsaacsimHandler(BaseSimHandler):
     def set_dof_targets(self, actions: torch.Tensor) -> None:
         if isinstance(actions, torch.Tensor):
             reverse_reindex = self.get_joint_reindex(self.robots[0].name, inverse=True)
-            action_tensor_all = actions[:, reverse_reindex]
+            action_tensor_all = actions[:, reverse_reindex]  # original order
         else:
             # Process dictionary-based actions
             action_tensors = []
@@ -493,7 +493,7 @@ class IsaacsimHandler(BaseSimHandler):
                 robot_inst.joint_names.index(jn)
                 for jn in self._get_joint_names(robot.name, sort=False)
                 if robot.actuators[jn].fully_actuated
-            ]
+            ]  # original order
             if self._manual_pd_on[i]:
                 robot_inst.set_joint_effort_target(
                     action_tensor_all[:, start_idx : start_idx + len(actionable_joint_ids)],
@@ -538,43 +538,77 @@ class IsaacsimHandler(BaseSimHandler):
         from isaaclab.actuators import ImplicitActuatorCfg
         from isaaclab.assets import Articulation, ArticulationCfg
 
-        manual_pd = any(mode == "effort" for mode in robot.control_type.values())
+        control_type = getattr(robot, "control_type", None)
+        manual_pd = any(mode == "effort" for mode in control_type.values()) if control_type else False
         self._manual_pd_on.append(manual_pd)
-        cfg = ArticulationCfg(
-            spawn=sim_utils.UsdFileCfg(
+
+        use_urdf: bool = getattr(robot, "use_urdf", False)  # TODO this is a temporary workaround
+        if use_urdf:  # TODO support both URDF and USD
+            spawn_cfg = sim_utils.UrdfFileCfg(
+                fix_base=False,
+                replace_cylinders_with_capsules=True,
+                asset_path=robot.urdf_path,
+                activate_contact_sensors=True,
+                rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                    disable_gravity=not robot.enabled_gravity,
+                    retain_accelerations=False,
+                    linear_damping=0.0,
+                    angular_damping=0.0,
+                    max_linear_velocity=1000.0,
+                    max_angular_velocity=1000.0,
+                    max_depenetration_velocity=1.0,
+                ),
+                articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+                    enabled_self_collisions=robot.enabled_self_collisions,
+                    solver_position_iteration_count=8,
+                    solver_velocity_iteration_count=4,
+                ),
+                joint_drive=sim_utils.UrdfConverterCfg.JointDriveCfg(
+                    gains=sim_utils.UrdfConverterCfg.JointDriveCfg.PDGainsCfg(stiffness=0, damping=0)
+                ),
+            )
+        else:
+            spawn_cfg = sim_utils.UsdFileCfg(
                 usd_path=robot.usd_path,
                 activate_contact_sensors=True,
                 rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                    disable_gravity=not robot.enabled_gravity,
                     max_depenetration_velocity=getattr(
                         robot, "max_depenetration_velocity", self.scenario.sim_params.max_depenetration_velocity
-                    )
+                    ),
                 ),
-                articulation_props=sim_utils.ArticulationRootPropertiesCfg(fix_root_link=robot.fix_base_link),
+                articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+                    enabled_self_collisions=robot.enabled_self_collisions, fix_root_link=robot.fix_base_link
+                ),
                 collision_props=sim_utils.CollisionPropertiesCfg(
                     contact_offset=getattr(robot, "contact_offset", self.scenario.sim_params.contact_offset),
                     rest_offset=getattr(robot, "rest_offset", self.scenario.sim_params.rest_offset),
                 ),
-            ),
+            )
+        cfg = ArticulationCfg(
+            spawn=spawn_cfg,
             actuators={
                 jn: ImplicitActuatorCfg(
                     joint_names_expr=[jn],
+                    effort_limit_sim=actuator.torque_limit,
+                    velocity_limit_sim=actuator.velocity_limit_sim,
                     stiffness=actuator.stiffness if not manual_pd else 0.0,
                     damping=actuator.damping if not manual_pd else 0.0,
-                    armature=getattr(robot, "armature", 0.01),
+                    armature=actuator.armature if actuator.armature is not None else getattr(robot, "armature", 0.01),
                 )
                 for jn, actuator in robot.actuators.items()
             },
         )
         cfg.prim_path = f"/World/envs/env_.*/{robot.name}"
-        cfg.spawn.usd_path = os.path.abspath(robot.usd_path)
-        cfg.spawn.rigid_props.disable_gravity = not robot.enabled_gravity
-        cfg.spawn.articulation_props.enabled_self_collisions = robot.enabled_self_collisions
+        # cfg.spawn.usd_path = os.path.abspath(robot.usd_path)  # FIXME why assign this absolute path afterwards?
+        # TODO will this be changed later?
         init_state = ArticulationCfg.InitialStateCfg(
-            pos=[0.0, 0.0, 0.0],
+            pos=getattr(robot, "default_pos", [0.0, 0.0, 0.0]),
             joint_pos=robot.default_joint_positions,
             joint_vel={".*": 0.0},
         )
         cfg.init_state = init_state
+        # NOTE `velocity_limit` here won't take effect
         for joint_name, actuator in robot.actuators.items():
             cfg.actuators[joint_name].velocity_limit = actuator.velocity_limit
         robot_inst = Articulation(cfg)

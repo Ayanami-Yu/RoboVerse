@@ -94,7 +94,7 @@ def base_ang_vel(env: EnvTypes, env_states: TensorState) -> torch.Tensor:
 def joint_pos_rel(env: EnvTypes, env_states: TensorState) -> torch.Tensor:
     """The joint positions of the robot w.r.t. the default joint positions."""
     robot_state = env_states.robots[env.name]
-    joint_pos_sorted = robot_state.joint_pos - env.default_dof_pos
+    joint_pos_sorted = robot_state.joint_pos - env.default_dof_pos_sorted
     return joint_pos_sorted[:, env.sorted_to_original_joint_indexes]
 
 

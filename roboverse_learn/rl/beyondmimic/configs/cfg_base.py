@@ -24,13 +24,13 @@ class BaseEnvCfg:
     priv_obs_len_history = 1  # number of past privileged observations to include in the privileged observation
 
     @configclass
-    class Control:  # TODO change these values following BeyondMimic
-        torque_limits_factor: float = 1.0  # scale torque limits from urdf
-        soft_joint_pos_limit_factor: float = 1.0  # scale dof pos limits from urdf
-        action_clip: float = 100.0
+    class Control:
+        torque_limits_factor: float = 1.0  # scale torque limits from urdf  # TODO check this
+        soft_joint_pos_limit_factor: float = 0.9
+        action_clip: float | None = None  # TODO check this
         action_scale = 0.25
-        action_offset = True
-        decimation = 4
+        action_offset = True  # offset actions by `default_dof_pos_original` specified in the task class
+        decimation = 4  # task-level
 
     control = Control()
 
@@ -41,22 +41,9 @@ class BaseEnvCfg:
 
     curriculum = Curriculum()
 
-    # @configclass
-    # class Rewards:
-    #     only_positive_rewards = False  # if true negative total rewards are clipped at zero (avoids early termination problems)
-    #     functions: list[Callable] | str = (
-    #         "roboverse_learn.rl.unitree_rl.configs.callback_funcs.reward_funcs"
-    #     )
-    #     scales: any = MISSING
-
-    # rewards = Rewards()
-
     class InitialStates:
         objects = {}
         robots = {
-            "g1_dof12": {"pos": [0.0, 0.0, 0.8]},
-            "g1_dof23": {"pos": [0.0, 0.0, 0.8]},
-            "g1_dof29_dex3": {"pos": [0.0, 0.0, 0.8]},
             "g1_dof29": {
                 "pos": [0.0, 0.0, 0.8],
                 "default_joint_pos": {
@@ -72,6 +59,19 @@ class BaseEnvCfg:
                     "right_wrist_roll_joint": -0.15,
                 },
             },
+            "g1_tracking": {  # TODO check if this will override `IsaacsimHandler._add_robot()`
+                "pos": [0.0, 0.0, 0.76],
+                "default_joint_pos": {
+                    ".*_hip_pitch_joint": -0.312,
+                    ".*_knee_joint": 0.669,
+                    ".*_ankle_pitch_joint": -0.363,
+                    ".*_elbow_joint": 0.6,
+                    "left_shoulder_roll_joint": 0.2,
+                    "left_shoulder_pitch_joint": 0.2,
+                    "right_shoulder_roll_joint": -0.2,
+                    "right_shoulder_pitch_joint": 0.2,
+                }
+            }
         }
 
     initial_states = InitialStates()

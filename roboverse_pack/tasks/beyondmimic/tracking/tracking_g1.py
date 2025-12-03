@@ -26,7 +26,7 @@ class TrackingG1Task(LeggedRobotTask):
     task_name = "tracking_g1"
 
     scenario = ScenarioCfg(
-        robots=["g1_dof29"],
+        robots=["g1_tracking"],
         objects=[],
         cameras=[],
         num_envs=2,
