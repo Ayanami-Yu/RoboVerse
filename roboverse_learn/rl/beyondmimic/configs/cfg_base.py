@@ -76,13 +76,13 @@ class BaseEnvCfg:
 
     initial_states = InitialStates()
 
-    callbacks_setup: dict[str, tuple[Callable, dict] | Callable] = MISSING
+    callbacks_setup: dict[str, tuple[Callable, dict] | Callable] = {}
     # func_name: (func(env, env_ids,**kwargs), kwargs)
     callbacks_reset: dict[str, tuple[Callable, dict] | Callable] = {}
     # func_name: (func(env, env_states, **kwargs), kwargs)
     callbacks_pre_step: dict[str, tuple[Callable, dict] | Callable] = {}
     # func_name: (func(env, actions, **kwargs), kwargs)
-    callbacks_post_step: dict[str, tuple[Callable, dict] | Callable] = MISSING
+    callbacks_post_step: dict[str, tuple[Callable, dict] | Callable] = {}
     # func_name: (func(env, env_states, **kwargs), kwargs)
     callbacks_terminate: dict[str, tuple[Callable, dict] | Callable] = MISSING
     callbacks_query: dict[str, tuple[Callable, dict] | Callable] = MISSING

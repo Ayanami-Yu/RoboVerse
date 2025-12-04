@@ -138,7 +138,7 @@ class TrackingG1EnvCfg(BaseEnvCfg):
 
     # NOTE extra obs will be included in `env_states.extras["contact_forces"]`
     callbacks_query = {"contact_forces": ContactForces(history_length=3)}
-    # TODO check if these physics params have the same effect in both Isaac Lab and Metasim
+    # TODO fully align domain randomization with BeyondMimic
     callbacks_setup = {
         "material_randomizer": MaterialRandomizer(
             obj_name="g1_tracking",
