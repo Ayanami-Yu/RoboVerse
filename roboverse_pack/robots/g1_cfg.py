@@ -104,7 +104,7 @@ class G1Dof12Cfg(RobotCfg):
         "right_ankle_roll_joint": "effort",
     }
 
-    # rigid body name substrings, to find indices of different rigid bodies.
+    # rigid body name substrings, to find indices of different rigid bodies.  # TODO find where these substrings are used
     feet_links: list[str] = ["ankle_roll"]
     knee_links: list[str] = ["knee"]
     torso_links: list[str] = ["torso_link"]

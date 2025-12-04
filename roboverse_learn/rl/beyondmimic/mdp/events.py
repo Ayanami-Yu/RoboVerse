@@ -44,7 +44,7 @@ def randomize_joint_default_pos(  # startup
 
 # adapted from `isaaclab.envs.mdp.events.py`
 
-def push_by_setting_velocity(  # TODO re-classify files in `callback_funcs` in the same way as BeyondMimic
+def push_by_setting_velocity(
     env: EnvTypes,
     env_states: TensorState,
     interval_range_s: tuple | int,

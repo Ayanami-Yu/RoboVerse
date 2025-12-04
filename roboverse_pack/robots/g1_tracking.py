@@ -6,7 +6,7 @@ from metasim.scenario.robot import BaseActuatorCfg, RobotCfg
 from metasim.utils import configclass
 from roboverse_learn.rl.beyondmimic.helper.string_utils import resolve_matching_names_values
 
-ASSET_DIR = "roboverse_data"  # TODO move this to roboverse_data
+ASSET_DIR = "roboverse_data"
 
 ARMATURE_5020 = 0.003609725
 ARMATURE_7520_14 = 0.010177520
@@ -67,6 +67,7 @@ class G1TrackingCfg(RobotCfg):
         "right_shoulder_roll_joint": -0.2,
         "right_shoulder_pitch_joint": 0.2,
     }
+    soft_joint_pos_limit_factor = 0.9
 
     # NOTE joint position limits obtained through `Articulation.root_physx_view.get_dof_limits()` in Isaac Lab
     joint_limits: dict[str, tuple[float, float]] = {

@@ -139,6 +139,7 @@ class MaterialRandomizer(BaseQueryType):
                 f" Expected total shapes: {expected_shapes}, but got: {sum(num_shapes_per_body)}."
             )
         # update material buffer with new samples
+        # NOTE this is part of `randomize_rigid_body_material.__call__()` in Isaac Lab
         if num_shapes_per_body is not None:
             set_shape_indices = []
             # sample material properties from the given ranges
@@ -165,7 +166,7 @@ class MaterialRandomizer(BaseQueryType):
             log.warning(
                 f"Material randomization not implemented for simulator: {self.simulator_name}. This randomization step will be skipped."
             )
-
+    # FIXME this randomizes the robot, but we want to keep the frictions zero?
     def _randomize_isaacsim(self, env_ids: torch.Tensor):
         if self.obj_name in self.handler.scene.articulations:
             obj_inst = self.handler.scene.articulations[self.obj_name]
@@ -177,7 +178,7 @@ class MaterialRandomizer(BaseQueryType):
             )
 
         # retrieve material buffer from the physics simulation
-        materials = obj_inst.root_physx_view.get_material_properties()
+        materials = obj_inst.root_physx_view.get_material_properties()  # (n_envs, n_shapes, 3) where 3 corresponds to static friction, dynamic friction, and restitution
         # randomly assign material IDs to the geometries
         total_num_shapes = obj_inst.root_physx_view.max_shapes
         bucket_ids = torch.randint(
@@ -535,6 +536,268 @@ class MassRandomizer(BaseQueryType):
                 / self.default_masses[env_ids[:, None], self.set_body_ids]
             )
             self._recompute_inertias(ratios, env_ids)
+
+
+
+
+
+
+
+
+class CoMRandomizer(BaseQueryType):  # TODO adapt `randomize_rigid_body_com()` from BeyondMimic
+    handler: BaseSimHandler
+
+    def __init__(
+        self,
+        obj_name: str,
+        body_names: list[str] | str | None = None,
+        mass_distribution_params: list | tuple = (-1.0, 3.0),
+        operation: Literal["add", "scale", "abs"] = "add",
+        distribution: Literal["uniform", "log_uniform", "gaussian"] = "uniform",
+        recompute_inertia: bool = True,
+    ):
+        super().__init__()
+        self.obj_name = obj_name
+        self.set_body_names = (
+            [body_names] if isinstance(body_names, str) else body_names
+        )
+        self.mass_distribution_params = mass_distribution_params
+        self.operation = operation
+        self.distribution = distribution
+        self.recompute_inertia = recompute_inertia
+
+    def bind_handler(self, handler: BaseSimHandler, *args, **kwargs):
+        super().bind_handler(handler, *args, **kwargs)
+        self.simulator_name = handler.scenario.simulator
+        self.initialize()
+
+    def initialize(self):
+        # check for valid operation
+        if self.operation == "scale":
+            _validate_scale_range(
+                self.mass_distribution_params,
+                "mass_distribution_params",
+                allow_zero=False,
+            )
+        elif self.operation not in ("abs", "add"):
+            raise ValueError(
+                "Randomization term 'randomize_rigid_body_mass' does not support operation:"
+                f" '{self.operation}'."
+            )
+
+        self.all_robot_names = [robot.name for robot in self.handler.robots]
+        self.all_object_names = [obj.name for obj in self.handler.objects]
+        self.body_names = self.handler.get_body_names(self.obj_name, sort=False)
+        self.set_body_ids = (
+            torch.tensor(
+                [self.body_names.index(_name) for _name in self.set_body_names],
+                dtype=torch.int,
+                device="cpu",
+            )
+            if self.set_body_names is not None
+            else torch.arange(len(self.body_names), dtype=torch.int, device="cpu")
+        )
+        self.default_masses = deepcopy(self._get_masses())
+
+    def __call__(self, env_ids: torch.Tensor | None = None, **kwargs):
+        # resolve environment ids
+        if env_ids is None:
+            env_ids = torch.arange(self.handler.num_envs, device="cpu")
+        else:
+            env_ids = torch.tensor(env_ids).cpu()
+        self.randomize(env_ids)
+
+    def _get_masses(self):
+        if self.simulator_name == "isaacsim":
+            return self._get_masses_isaacsim()
+        elif self.simulator_name == "isaacgym":
+            return self._get_masses_isaacgym()
+        elif self.simulator_name == "mujoco":
+            return self._get_masses_mujoco()
+
+    def _get_masses_isaacsim(self):
+        if self.obj_name in self.handler.scene.articulations:
+            obj_inst = self.handler.scene.articulations[self.obj_name]
+        elif self.obj_name in self.handler.scene.rigid_objects:
+            obj_inst = self.handler.scene.rigid_objects[self.obj_name]
+        else:
+            raise ValueError(f"Not found: {self.obj_name}.")
+        masses = obj_inst.root_physx_view.get_masses()
+        return masses
+
+    def _get_masses_isaacgym(self):
+        """
+        Get masses for IsaacGym simulator.
+        Note that the isaacgym handler only support 1 robot and multiple objects, currently.
+        """
+        # Initialize masses tensor
+        masses = torch.zeros(
+            (self.handler.num_envs, len(self.body_names)),
+            dtype=torch.float32,
+            device=self.handler.device,
+        )
+
+        # Get masses from first environment (they should be the same across environments initially)
+        for (
+            env_id,
+            env,
+        ) in enumerate(self.handler._envs):
+            if self.obj_name in self.all_robot_names:
+                _tmp_handle = self.handler._robot_handles[0]
+            elif self.obj_name in self.all_object_names:
+                # Find the object handle
+                _tmp_handle = self.handler._obj_handles[env_id][
+                    self.handler.objects.index(self.obj_name)
+                ]
+            else:
+                raise ValueError(f"Not found: {self.obj_name}.")
+
+            body_props = self.handler.gym.get_actor_rigid_body_properties(
+                env, _tmp_handle
+            )
+            for i, prop in enumerate(body_props):
+                masses[env_id, i] = prop.mass
+
+        return masses
+
+    def _get_masses_mujoco(self):
+        """Get masses for MuJoCo simulator."""
+        assert (
+            self.handler.num_envs == 1
+        ), "MuJoCo handler only supports single environment."
+        model = self.handler.physics.model
+        body_masses = model.body_mass
+        return torch.tensor(
+            body_masses,
+            dtype=torch.float32,
+            device=self.handler.device,
+        ).unsqueeze(
+            0
+        )  # shape: (1, num_bodies)
+
+    def _set_masses(self, masses: torch.Tensor, env_ids: torch.Tensor):
+        if self.simulator_name == "isaacsim":
+            self._set_masses_isaacsim(masses, env_ids)
+        elif self.simulator_name == "isaacgym":
+            self._set_masses_isaacgym(masses, env_ids)
+        elif self.simulator_name == "mujoco":
+            self._set_masses_mujoco(masses, env_ids)
+
+    def _set_masses_isaacsim(self, masses: torch.Tensor, env_ids: torch.Tensor):
+        if self.obj_name in self.handler.scene.articulations:
+            obj_inst = self.handler.scene.articulations[self.obj_name]
+        elif self.obj_name in self.handler.scene.rigid_objects:
+            obj_inst = self.handler.scene.rigid_objects[self.obj_name]
+        obj_inst.root_physx_view.set_masses(masses, env_ids)
+
+    def _set_masses_isaacgym(self, masses: torch.Tensor, env_ids: torch.Tensor):
+        """Set masses for IsaacGym simulator."""
+        for env_id in env_ids:
+            env = self.handler._envs[env_id]
+            if self.obj_name in self.all_robot_names:
+                _tmp_handle = self.handler._robot_handles[env_id]
+            elif self.obj_name in self.all_object_names:
+                # Find the object handle
+                _tmp_handle = self.handler._obj_handles[env_id][
+                    self.handler.objects.index(self.obj_name)
+                ]
+            else:
+                raise ValueError(f"Not found: {self.obj_name}.")
+
+            # Get current body properties
+            body_props = self.handler.gym.get_actor_rigid_body_properties(
+                env, _tmp_handle
+            )
+
+            # Update masses for specified bodies
+            for body_idx in self.set_body_ids:
+                if body_idx < len(body_props):
+                    body_props[body_idx].mass = float(masses[env_id, body_idx])
+
+            # Apply the modified properties
+            self.handler.gym.set_actor_rigid_body_properties(
+                env, _tmp_handle, body_props
+            )
+
+    def _set_masses_mujoco(self, masses: torch.Tensor, env_ids: torch.Tensor):
+        model = self.handler.physics.model
+        model.body_mass[self.set_body_ids] = masses[env_ids, self.set_body_ids].cpu()
+
+    def _recompute_inertias(self, ratios: torch.Tensor, env_ids: torch.Tensor):
+        # scale the inertia tensors by the the ratios
+        # since mass randomization is done on default values, we can use the default inertia tensors
+        if self.simulator_name == "isaacsim":
+            if self.obj_name in self.handler.scene.articulations:
+                obj_inst = self.handler.scene.articulations[self.obj_name]
+                inertias = obj_inst.root_physx_view.get_inertias()
+                # inertia has shape: (num_envs, num_bodies, 9) for articulation
+                inertias[env_ids[:, None], self.set_body_ids] = (
+                    obj_inst.data.default_inertia[env_ids[:, None], self.set_body_ids]
+                    * ratios[..., None]
+                )
+            elif self.obj_name in self.handler.scene.rigid_objects:
+                obj_inst = self.handler.scene.rigid_objects[self.obj_name]
+                # inertia has shape: (num_envs, 9) for rigid object
+                inertias[env_ids] = obj_inst.data.default_inertia[env_ids] * ratios
+            # set the inertia tensors into the physics simulation
+            obj_inst.root_physx_view.set_inertias(inertias, env_ids)
+        elif self.simulator_name == "isaacgym":
+            # For IsaacGym, inertia recomputation is handled automatically by the physics engine
+            # when mass is changed, so we don't need to manually update inertias
+
+            # a little delay refresh in isaacym handler
+            # self.gym.refresh_mass_matrix_tensors(self.sim)
+            pass
+        elif self.simulator_name == "mujoco":
+            model = self.handler.physics.model
+            model.body_inertia[self.set_body_ids] = (
+                model.body_inertia[self.set_body_ids] * ratios.squeeze(0).numpy()
+            )  # only single env
+
+    def randomize(self, env_ids: torch.Tensor):
+        if self.simulator_name not in ("isaacsim", "isaacgym", "mujoco"):
+            log.warning(
+                f"Mass randomization not implemented for simulator: {self.simulator_name}. This randomization step will be skipped."
+            )
+            return
+        # get the current masses of the bodies (num_assets, num_bodies)
+        masses = self._get_masses()  # shape: (num_envs, num_bodies)
+        # apply randomization on default values
+        # this is to make sure when calling the function multiple times, the randomization is applied on the
+        # default values and not the previously randomized values
+        masses[env_ids[:, None], self.set_body_ids] = self.default_masses[
+            env_ids[:, None], self.set_body_ids
+        ].clone()
+        # sample from the given range
+        # note: we modify the masses in-place for all environments
+        #   however, the setter takes care that only the masses of the specified environments are modified
+        masses = randomize_prop_by_op(
+            masses,
+            self.mass_distribution_params,
+            env_ids,
+            self.set_body_ids,
+            operation=self.operation,
+            distribution=self.distribution,
+        )
+        self._set_masses(masses, env_ids)
+        # recompute inertia tensors if needed
+        if self.recompute_inertia:
+            # compute the ratios of the new masses to the initial masses
+            ratios = (
+                masses[env_ids[:, None], self.set_body_ids]
+                / self.default_masses[env_ids[:, None], self.set_body_ids]
+            )
+            self._recompute_inertias(ratios, env_ids)
+
+
+
+
+
+
+
+
+
+
 
 
 # helper functions adapted from Isaac Lab
