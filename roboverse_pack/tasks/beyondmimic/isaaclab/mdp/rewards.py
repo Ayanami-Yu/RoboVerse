@@ -9,7 +9,7 @@ from isaaclab.utils.math import quat_error_magnitude
 from whole_body_tracking.tasks.tracking.mdp.commands import MotionCommand
 
 if TYPE_CHECKING:
-    from isaaclab.envs import ManagerBasedRLEnv
+    from roboverse_pack.tasks.beyondmimic.isaaclab.manager_based_rl_env import ManagerBasedRLEnv
 
 
 def _get_body_indexes(command: MotionCommand, body_names: list[str] | None) -> list[int]:

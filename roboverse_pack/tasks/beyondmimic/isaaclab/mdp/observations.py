@@ -8,24 +8,24 @@ from isaaclab.utils.math import matrix_from_quat, subtract_frame_transforms
 from roboverse_pack.tasks.beyondmimic.isaaclab.mdp.commands import MotionCommand
 
 if TYPE_CHECKING:
-    from isaaclab.envs import ManagerBasedEnv
+    from roboverse_pack.tasks.beyondmimic.isaaclab.manager_based_rl_env import ManagerBasedRLEnv
 
 
-def robot_anchor_ori_w(env: ManagerBasedEnv, command_name: str) -> torch.Tensor:  # unused
+def robot_anchor_ori_w(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:  # unused
     """Robot anchor orientation in world frame."""
     command: MotionCommand = env.command_manager.get_term(command_name)
     mat = matrix_from_quat(command.robot_anchor_quat_w)
     return mat[..., :2].reshape(mat.shape[0], -1)
 
 
-def robot_anchor_lin_vel_w(env: ManagerBasedEnv, command_name: str) -> torch.Tensor:  # unused
+def robot_anchor_lin_vel_w(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:  # unused
     """Robot anchor linear velocity in world frame."""
     command: MotionCommand = env.command_manager.get_term(command_name)
 
     return command.robot_anchor_vel_w[:, :3].view(env.num_envs, -1)
 
 
-def robot_anchor_ang_vel_w(env: ManagerBasedEnv, command_name: str) -> torch.Tensor:  # unused
+def robot_anchor_ang_vel_w(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:  # unused
     """Robot anchor angular velocity in world frame."""
     command: MotionCommand = env.command_manager.get_term(command_name)
 
@@ -33,7 +33,7 @@ def robot_anchor_ang_vel_w(env: ManagerBasedEnv, command_name: str) -> torch.Ten
 
 
 # NOTE observation callback results will be concatenated into a single tensor
-def robot_body_pos_b(env: ManagerBasedEnv, command_name: str) -> torch.Tensor:  # used
+def robot_body_pos_b(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:  # used
     """Body positions relative to (robot) anchor frame."""
     command: MotionCommand = env.command_manager.get_term(command_name)
 
@@ -48,7 +48,7 @@ def robot_body_pos_b(env: ManagerBasedEnv, command_name: str) -> torch.Tensor:  
     return pos_b.view(env.num_envs, -1)  # [n_envs, n_bodies * 3]
 
 
-def robot_body_ori_b(env: ManagerBasedEnv, command_name: str) -> torch.Tensor:  # used
+def robot_body_ori_b(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:  # used
     """Body orientations relative to anchor frame."""
     command: MotionCommand = env.command_manager.get_term(command_name)
 
@@ -63,7 +63,7 @@ def robot_body_ori_b(env: ManagerBasedEnv, command_name: str) -> torch.Tensor:  
     return mat[..., :2].reshape(mat.shape[0], -1)
 
 
-def motion_anchor_pos_b(env: ManagerBasedEnv, command_name: str) -> torch.Tensor:  # used
+def motion_anchor_pos_b(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:  # used
     """Target anchor position relative to anchor frame."""
     command: MotionCommand = env.command_manager.get_term(command_name)
 
@@ -77,7 +77,7 @@ def motion_anchor_pos_b(env: ManagerBasedEnv, command_name: str) -> torch.Tensor
     return pos.view(env.num_envs, -1)
 
 
-def motion_anchor_ori_b(env: ManagerBasedEnv, command_name: str) -> torch.Tensor:  # used
+def motion_anchor_ori_b(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:  # used
     """Target anchor orientation relative to anchor frame."""
     command: MotionCommand = env.command_manager.get_term(command_name)
 

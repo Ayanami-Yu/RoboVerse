@@ -24,7 +24,7 @@ from isaaclab.utils.math import (
 )
 
 if TYPE_CHECKING:
-    from isaaclab.envs import ManagerBasedRLEnv
+    from roboverse_pack.tasks.beyondmimic.isaaclab.manager_based_rl_env import ManagerBasedRLEnv
 
 
 class MotionLoader:
