@@ -3,13 +3,10 @@ import math
 from metasim.utils import configclass
 
 from roboverse_learn.rl.unitree_rl.configs.cfg_base import BaseEnvCfg
-from roboverse_learn.rl.unitree_rl.configs.algorithm import (
-    RslRlOnPolicyRunnerCfg,
-    RslRlPpoActorCriticCfg,
-    RslRlPpoAlgorithmCfg,
-)
+from roboverse_learn.rl.configs.rsl_rl.algorithm import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, RslRlPpoAlgorithmCfg
 import roboverse_learn.rl.unitree_rl.helper.curriculum_utils as curr_funs
-from roboverse_learn.rl.unitree_rl.configs.cfg_queries import ContactForces
+from metasim.queries import ContactForces
+from roboverse_learn.rl.unitree_rl.configs.cfg_queries import LidarPointCloud
 from roboverse_learn.rl.unitree_rl.configs.cfg_randomizers import (
     MaterialRandomizer,
     MassRandomizer,
@@ -111,7 +108,7 @@ class WalkG1Dof29EnvCfg(BaseEnvCfg):
         },
     )
 
-    callbacks_query = {"contact_forces": ContactForces(history_length=3)}  # `_query`  # NOTE will be included in `env_states.extras["contact_forces"]`
+    callbacks_query = {"contact_forces": ContactForces(history_length=3), "lidar_point_cloud": LidarPointCloud(enabled=False)}  # `_query`  # NOTE will be included in `env_states.extras["contact_forces"]`
     callbacks_setup = {  # NOTE corresponds to startup mode of Isaac Lab `EventTermCfg`
         "material_randomizer": MaterialRandomizer(
             obj_name="g1_dof29",
@@ -129,13 +126,14 @@ class WalkG1Dof29EnvCfg(BaseEnvCfg):
     }
     callbacks_reset = {  # `reset_callback`
         "random_root_state": (
-            reset_funcs.random_root_state,
+            reset_funcs.random_root_state_terrain_aware,
             {
                 "pose_range": [
-                    [-0.5, -0.5, 0.0, 0, 0, -3.14],  # x,y,z roll,pitch,yaw
-                    [0.5, 0.5, 0.0, 0, 0, 3.14],
+                    [-0.5, -0.5, 0.0, 0, 0, -3.14],  # x, y, z_offset, roll, pitch, yaw
+                    [0.5, 0.5, 0.05, 0, 0, 3.14],     # z_offset can vary slightly
                 ],
                 "velocity_range": [[0] * 6, [0] * 6],
+                # base_height_offset is None by default, uses robot's default z position (0.8m from cfg_base.py)
             },
         ),
         "reset_joints_by_scale": (

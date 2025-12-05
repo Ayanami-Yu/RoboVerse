@@ -1,13 +1,13 @@
 import math
 from metasim.utils import configclass
 from roboverse_learn.rl.unitree_rl.configs.cfg_base import BaseEnvCfg
-from roboverse_learn.rl.unitree_rl.configs.algorithm import (
+from roboverse_learn.rl.configs.rsl_rl.algorithm import (
     RslRlOnPolicyRunnerCfg,
     RslRlPpoAlgorithmCfg,
     RslRlPpoActorCriticRecurrentCfg,
 )
 from roboverse_learn.rl.unitree_rl.helper.curriculum_utils import lin_vel_cmd_levels
-from roboverse_learn.rl.unitree_rl.configs.cfg_queries import ContactForces
+from metasim.queries import ContactForces
 from roboverse_learn.rl.unitree_rl.configs.cfg_randomizers import (
     MaterialRandomizer,
     MassRandomizer,
@@ -116,13 +116,14 @@ class WalkG1Dof12EnvCfg(BaseEnvCfg):
     }
     callbacks_reset = {
         "random_root_state": (
-            reset_funcs.random_root_state,
+            reset_funcs.random_root_state_terrain_aware,
             {
                 "pose_range": [
-                    [0., 0., 0, 0, 0, 0],
+                    [0., 0., 0, 0, 0, 0],  # x, y, z_offset, roll, pitch, yaw
                     [0., 0., 0, 0, 0, 0],
                 ],
                 "velocity_range": [[-0.5] * 6, [0.5] * 6],
+                # base_height_offset is None by default, uses robot's default z position (0.8m from cfg_base.py)
             },
         ),
         "reset_joints_by_scale": (

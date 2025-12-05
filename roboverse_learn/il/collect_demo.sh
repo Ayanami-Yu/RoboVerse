@@ -2,13 +2,14 @@
 export CUDA_VISIBLE_DEVICES=0
 
 ## Parameters
-task_name_set=close_box
+task_name_set=stack_cube
 random_level=0          # 0: No randomization 1: Randomize visual material 2: Randomize camera pose 3: Randomize object reflection and lighting
 num_envs=1              # Number of parallel environments
 demo_start_idx=0        # Index of the first demo to collect
-max_demo_idx=100
 sim_set=mujoco
 cust_name=test
+num_demo_success=100    # Number of successful demonstrations to collect
+
 expert_data_num=100
 
 obs_space=joint_pos
@@ -27,7 +28,7 @@ python ./scripts/advanced/collect_demo.py \
 --run_unfinished \
 --headless \
 --demo_start_idx=${demo_start_idx} \
---max_demo_idx=${max_demo_idx} \
+--num_demo_success ${num_demo_success} \
 --cust_name=${cust_name} \
 #--enable_randomization
 
