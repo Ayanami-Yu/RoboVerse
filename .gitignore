@@ -104,3 +104,7 @@ id_rsa*
 
 # for test cache
 .pytest_cache/
+
+*.pkl
+*.pt
+output
