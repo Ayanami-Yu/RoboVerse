@@ -69,7 +69,9 @@ class RslRlEnvWrapper:
 
     @property
     def cfg(self) -> dict | object:
-        return self.train_cfg
+        # FIXME `train_cfg` is of type `dict`; however, in `WandBSummaryWriter.store_config()` which is called in `OnPolicyRunner._prepare_logging_writer()`, this attribute is expected to be of type `configclass` or `dataclass`
+        # return self.train_cfg
+        return self.env.cfg if hasattr(self.env, "cfg") else self.train_cfg
 
     @property
     def obs_buf(self) -> TensorDict:

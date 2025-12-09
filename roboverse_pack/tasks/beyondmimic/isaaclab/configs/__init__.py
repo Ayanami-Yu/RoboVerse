@@ -1,6 +1,7 @@
 """Configs for runners and environments."""
 
-import gymnasium as gym
+# TODO remove the following lines
+"""import gymnasium as gym
 
 from . import agents, flat_env_cfg
 
@@ -37,4 +38,4 @@ gym.register(
         "env_cfg_entry_point": flat_env_cfg.G1FlatLowFreqEnvCfg,
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1FlatLowFreqPPORunnerCfg",
     },
-)
+)"""

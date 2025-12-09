@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import math
 from typing import Sequence, TYPE_CHECKING
@@ -78,7 +80,7 @@ class MotionCommandCfg:
 
 
 class MotionCommand:
-    def __init__(self, env: "TrackingG1Task", cfg: MotionCommandCfg):
+    def __init__(self, env: TrackingG1Task, cfg: MotionCommandCfg):
         self.env = env
         self.cfg = cfg
         self.device = env.device

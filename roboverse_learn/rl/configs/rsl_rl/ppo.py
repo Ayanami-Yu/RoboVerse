@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, List, Literal, Optional
+from typing import Literal, Optional
 
 from metasim.utils import configclass
 
@@ -33,7 +33,7 @@ class RslRlPPOConfig(RslRlOnPolicyRunnerCfg):
     max_iterations: int = 50000
     save_interval: int = 100
     empirical_normalization: bool = False
-    obs_groups: Optional[Dict[str, List[str]]] = None
+    obs_groups: Optional[dict[str, list[str]]] = None
     clip_actions: Optional[float] = None
     logger: Literal["tensorboard", "neptune", "wandb"] = "tensorboard"
     neptune_project: str = "isaaclab"

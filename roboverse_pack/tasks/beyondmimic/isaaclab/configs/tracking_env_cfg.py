@@ -298,7 +298,9 @@ class TrackingEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the locomotion velocity-tracking environment."""
 
     # Scene settings
-    scene: MySceneCfg = MySceneCfg(num_envs=4096, env_spacing=2.5)
+    scene: MySceneCfg = MySceneCfg(
+        num_envs=4096, env_spacing=2.5
+    )  # NOTE will be changed later by accessing `env_cfg.scene.num_envs` in `main()`
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()

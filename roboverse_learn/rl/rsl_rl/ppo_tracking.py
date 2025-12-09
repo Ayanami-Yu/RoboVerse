@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '5'  # TODO debug only, remove this
+
 import random
 
 try:
@@ -17,12 +18,12 @@ from rsl_rl.runners import OnPolicyRunner
 
 rootutils.setup_root(__file__, pythonpath=True)
 
-from roboverse_learn.rl.configs.rsl_rl.ppo import RslRlPPOConfig
+from roboverse_learn.rl.configs.rsl_rl.ppo_tracking import RslRlPPOTrackingConfig
 from roboverse_learn.rl.rsl_rl.env_wrapper import RslRlEnvWrapper
 from metasim.task.registry import get_task_class
 
 
-def make_roboverse_env(args: RslRlPPOConfig):
+def make_roboverse_env(args: RslRlPPOTrackingConfig):
     """Create RoboVerse task environment"""
     task_cls = get_task_class(args.task)
 
@@ -38,11 +39,12 @@ def make_roboverse_env(args: RslRlPPOConfig):
     device = torch.device(args.device if torch.cuda.is_available() and args.cuda else "cpu")
 
     # Pass env_cfg to task constructor
-    env = task_cls(scenario=scenario, device=device)
+    # env = task_cls(scenario=scenario, device=device)
+    env = task_cls(scenario=scenario, args=args, device=device)
     return env
 
 
-def train(args: RslRlPPOConfig):
+def train(args: RslRlPPOTrackingConfig):
     """Train RSL-RL PPO"""
     # Setup
     random.seed(args.seed)
@@ -75,7 +77,6 @@ def train(args: RslRlPPOConfig):
     # Create environment wrapper
     env_wrapper = RslRlEnvWrapper(env, train_cfg=train_cfg)
 
-
     runner = OnPolicyRunner(
         env=env_wrapper,
         train_cfg=train_cfg,
@@ -105,5 +106,5 @@ def train(args: RslRlPPOConfig):
 
 
 if __name__ == "__main__":
-    args = tyro.cli(RslRlPPOConfig)
+    args = tyro.cli(RslRlPPOTrackingConfig)
     train(args)

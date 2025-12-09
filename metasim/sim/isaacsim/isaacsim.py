@@ -101,8 +101,8 @@ class IsaacsimHandler(BaseSimHandler):
         from isaaclab.sim import PhysxCfg, SimulationCfg, SimulationContext
 
         sim_config: SimulationCfg = SimulationCfg(
-            device="cuda:0",
-            render_interval=self.scenario.decimation,  # TTODO divide into render interval and control decimation
+            device="cuda:0",  # FIXME why hard-code the 0-th GPU?
+            render_interval=self.scenario.decimation,  # TODO divide into render interval and control decimation
             physx=PhysxCfg(
                 bounce_threshold_velocity=self.scenario.sim_params.bounce_threshold_velocity,
                 solver_type=self.scenario.sim_params.solver_type,
@@ -842,6 +842,7 @@ class IsaacsimHandler(BaseSimHandler):
         dynamic_friction = getattr(ground_cfg, "dynamic_friction", 1.0) if ground_cfg is not None else 1.0
         restitution = getattr(ground_cfg, "restitution", 0.0) if ground_cfg is not None else 0.0
 
+        # TODO check if this needs to be aligned
         terrain_config = TerrainImporterCfg(
             prim_path="/World/ground",
             terrain_type="generator",

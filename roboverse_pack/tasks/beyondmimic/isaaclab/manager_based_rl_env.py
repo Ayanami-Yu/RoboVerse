@@ -3,29 +3,32 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-# needed to import for allowing type-hinting: np.ndarray | None
 from __future__ import annotations
 
+import argparse
 import math
 from collections.abc import Sequence
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import gymnasium as gym
 import numpy as np
 import torch
-from isaaclab.envs.common import VecEnvStepReturn
-from isaaclab.envs.manager_based_env import ManagerBasedEnv
-from isaaclab.envs.manager_based_rl_env_cfg import ManagerBasedRLEnvCfg
-from isaaclab.managers import CommandManager, CurriculumManager, RewardManager, TerminationManager
-from isaaclab.ui.widgets import ManagerLiveVisualizer
-from isaacsim.core.version import get_version
+import wandb
 from loguru import logger as log
 
+from metasim.scenario.scenario import ScenarioCfg
 from metasim.task.registry import register_task
 
+from .manager_based_env import ManagerBasedEnv
 
-@register_task("beyondmimic.isaaclab.tracking")
-class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
+if TYPE_CHECKING:
+    from isaaclab.envs.common import VecEnvStepReturn
+
+    from roboverse_learn.rl.configs.rsl_rl.ppo_tracking import RslRlPPOTrackingConfig
+
+
+@register_task("beyondmimic.tracking.isaaclab")
+class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):  # TODO check removing `gym.Env`
     """The superclass for the manager-based workflow reinforcement learning-based environments.
 
     This class inherits from :class:`ManagerBasedEnv` and implements the core functionality for
@@ -52,30 +55,58 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
         After that, the :meth:`step` function handles the reset of terminated sub-environments.
         This is because the simulator does not support resetting individual sub-environments
         in a vectorized environment.
-
     """
 
-    is_vector_env: ClassVar[bool] = True
-    """Whether the environment is a vectorized environment."""
-    metadata: ClassVar[dict[str, Any]] = {
-        "render_modes": [None, "human", "rgb_array"],
-        "isaac_sim_version": get_version(),
-    }
-    """Metadata for the environment."""
+    scenario = ScenarioCfg()  # to align with the unified training script
 
-    cfg: ManagerBasedRLEnvCfg
-    """Configuration for the environment."""
-
-    def __init__(self, cfg: ManagerBasedRLEnvCfg, render_mode: str | None = None):
+    # TODO support render mode "rgb_array" when recording video
+    # TODO param `device` is not used? consider removing it
+    def __init__(
+        self,
+        scenario: ScenarioCfg,
+        args: RslRlPPOTrackingConfig,
+        device: str | torch.device | None = None,
+        render_mode: str | None = None,
+    ):
         """Initialize the environment.
 
         Args:
-            cfg: The configuration for the environment.
+            scenario: For compatibility with the unified training script.
+            args: Arguments including CLI args. Needed for specifying motion file path.
+            device: The used device.
             render_mode: The render mode for the environment. Defaults to None, which
                 is similar to ``"human"``.
         """
+        assert scenario.simulator in ["isaaclab", "isaacsim"], (
+            "Only Isaac Lab is supported for training of motion tracking task"
+        )
+
+        self._launch(scenario.headless)
+
+        # re-import the modules after `AppLauncher` is instantiated
+        from isaacsim.core.version import get_version
+
+        import roboverse_pack.tasks.beyondmimic.isaaclab.configs.flat_env_cfg as flat_env_cfg
+
+        # whether the environment is a vectorized environment
+        self.is_vector_env: ClassVar[bool] = True
+
+        # metadata for the environment
+        self.metadata: ClassVar[dict[str, Any]] = {
+            "render_modes": [None, "human", "rgb_array"],
+            "isaac_sim_version": get_version(),
+        }
+
         # -- counter for curriculum
         self.common_step_counter = 0
+
+        # instantiate environment config
+        # NOTE robot (`ArticulationCfg`) is included in `G1FlatEnvCfg` so the CLI arg `robot` will be ignored
+        cfg = flat_env_cfg.G1FlatEnvCfg()
+        cfg.scene.num_envs = scenario.num_envs
+        cfg.seed = args.train_cfg["seed"]
+        cfg.sim.device = args.device if args.device else cfg.sim.device
+        cfg.commands.motion.motion_file = args.motion_file
 
         # initialize the base class to setup the scene.
         super().__init__(cfg=cfg)
@@ -88,11 +119,38 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
         # -- set the framerate of the gym video recorder wrapper so that the playback speed of the produced video matches the simulation
         self.metadata["render_fps"] = 1 / self.step_dt
 
+        # use artifact for training
+        if args.use_wandb and args.registry_name:
+            wandb.run.use_artifact(args.registry_name)  # TODO check if this is correct
+
         log.info("[INFO]: Completed setting up the environment...")
+
+    def _launch(self, headless: bool = False):
+        from isaaclab.app import AppLauncher
+
+        parser = argparse.ArgumentParser()
+        AppLauncher.add_app_launcher_args(parser)
+        args = parser.parse_args([])
+        args.enable_cameras = True
+        args.headless = headless
+        app_launcher = AppLauncher(args)
+
+        # NOTE will be closed in `self.close()` (called in `self.__del__()`)
+        self.simulation_app = app_launcher.app
 
     """
     Properties.
     """
+
+    @property
+    def obs_buf(self) -> torch.Tensor:
+        """Policy (actor) observations in shape (num_envs, num_obs)."""
+        return self._obs_buf["policy"]
+
+    @property
+    def priv_obs_buf(self) -> torch.Tensor:
+        """Critic observations in shape (num_envs, num_priv_obs)."""
+        return self._obs_buf["critic"]
 
     @property
     def max_episode_length_s(self) -> float:
@@ -100,9 +158,30 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
         return self.cfg.episode_length_s
 
     @property
+    def max_episode_steps(self) -> int:
+        """Maximum episode steps."""
+        return self.max_episode_length
+
+    @property
+    def num_actions(self) -> int:
+        """Total dimension of actions."""
+        return self.action_manager.total_action_dim
+
+    # to keep backward compatibility with Isaac Lab MDP functions
+
+    @property
     def max_episode_length(self) -> int:
         """Maximum episode length in environment steps."""
         return math.ceil(self.max_episode_length_s / self.step_dt)
+
+    @property
+    def _episode_steps(self) -> torch.Tensor:
+        """Current episode lengths of each env. Used in time-out computation."""
+        return self.episode_length_buf
+
+    @_episode_steps.setter
+    def _episode_steps(self, value: torch.Tensor):
+        self.episode_length_buf = value
 
     """
     Operations - Setup.
@@ -112,6 +191,8 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
         """Load the managers for the environment."""
         # note: this order is important since observation manager needs to know the command and action managers
         # and the reward manager needs to know the termination manager
+        from isaaclab.managers import CommandManager, CurriculumManager, RewardManager, TerminationManager
+
         # -- command manager
         self.command_manager: CommandManager = CommandManager(self.cfg.commands, self)
         log.info("[INFO] Command Manager: ", self.command_manager)
@@ -134,13 +215,13 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
         self._configure_gym_env_spaces()
 
         # perform events at the start of the simulation
-        if (
-            "startup" in self.event_manager.available_modes
-        ):  # TODO check whether robot material is also randomized in evaluation
+        if "startup" in self.event_manager.available_modes:
             self.event_manager.apply(mode="startup")
 
     def setup_manager_visualizers(self):
         """Creates live visualizers for manager terms."""
+        from isaaclab.ui.widgets import ManagerLiveVisualizer
+
         self.manager_visualizers = {
             "action_manager": ManagerLiveVisualizer(manager=self.action_manager),
             "observation_manager": ManagerLiveVisualizer(manager=self.observation_manager),
@@ -212,7 +293,7 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
 
         if len(self.recorder_manager.active_terms) > 0:
             # update observations for recording if needed
-            self.obs_buf = self.observation_manager.compute()
+            self._obs_buf = self.observation_manager.compute()
             self.recorder_manager.record_post_step()
 
         # -- reset envs that terminated/timed-out and log the episode information
@@ -240,10 +321,10 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
             self.event_manager.apply(mode="interval", dt=self.step_dt)
         # -- compute observations
         # note: done after reset to get the correct observations for reset envs
-        self.obs_buf = self.observation_manager.compute()
+        self._obs_buf = self.observation_manager.compute()
 
         # return observations, rewards, resets and extras
-        return self.obs_buf, self.reward_buf, self.reset_terminated, self.reset_time_outs, self.extras
+        return self._obs_buf, self.reward_buf, self.reset_terminated, self.reset_time_outs, self.extras
 
     def render(self, recompute: bool = False) -> np.ndarray | None:
         """Run rendering without stepping through the physics.
@@ -317,8 +398,10 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
             del self.reward_manager
             del self.termination_manager
             del self.curriculum_manager
+            self.simulation_app.close()
             # call the parent class to close the environment
             super().close()
+            del self.simulation_app
 
     """
     Helper functions.
