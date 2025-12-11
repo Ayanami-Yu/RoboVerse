@@ -18,9 +18,11 @@ SimBackend = Literal[
 class RslRlPPOTrackingConfig(RslRlPPOConfig):
     """RSL-RL PPO configs for motion tracking task."""
     # Experiment / runner settings
+    exp_name: str = "rsl_rl_ppo_tracking"
     max_iterations = 30000
     save_interval = 500
     empirical_normalization = True  # deprecated
+    obs_groups = {"policy": ["policy"], "critic": ["critic"]}
     wandb_project: str = "rsl_rl_ppo_tracking"
 
     # Environment / device
@@ -49,7 +51,8 @@ class RslRlPPOTrackingConfig(RslRlPPOConfig):
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
         clip_param=0.2,
-        entropy_coef=0.05,  # TODO the only difference?
+        # entropy_coef=0.05,  # FIXME was a typo; high `entropy_coef` leads to high entropy loss, low converged mean reward, and short episode length
+        entropy_coef=0.005,  # NOTE the only difference
         num_learning_epochs=5,
         num_mini_batches=4,
         learning_rate=1.0e-3,

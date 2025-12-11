@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from isaaclab.envs.manager_based_env_cfg import ManagerBasedEnvCfg
 
 
-class ManagerBasedEnv:
+class ManagerBasedEnvV2:
     """The base environment encapsulates the simulation scene and the environment managers for the manager-based workflow.
 
     While a simulation scene or world comprises of different components such as the robots, objects,
@@ -177,8 +177,9 @@ class ManagerBasedEnv:
 
         # initialize observation buffers
         # NOTE the original Isaac Lab's `RslRlVecEnvWrapper.get_observations()` calls `observation_manager.compute()`; however, since RoboVerse's `RslRlVecEnvWrapper.get_observations()` directly returns its `obs_buf` and `OnPolicyRunner` needs the initial observations to be initialized, we need to first fill in `_obs_buf` here
-        # self._obs_buf = {}  # TODO remove this
-        self._obs_buf = self.observation_manager.compute()
+        # TODO verify correctness and remove the following line
+        # self._obs_buf = self.observation_manager.compute()  # NOTE this is done here because RoboVerse' `RslRlVecEnvWrapper` doesn't call `env.reset()` in its `__init__()`, though calling `observation_manager` alone is probably not enough
+        self._obs_buf = {}
 
     def __del__(self):
         """Cleanup for the environment."""
@@ -252,7 +253,7 @@ class ManagerBasedEnv:
         # perform events at the start of the simulation
         # in-case a child implementation creates other managers, the randomization should happen
         # when all the other managers are created
-        if self.__class__ == ManagerBasedEnv and "startup" in self.event_manager.available_modes:
+        if self.__class__ == ManagerBasedEnvV2 and "startup" in self.event_manager.available_modes:
             self.event_manager.apply(mode="startup")
 
     def setup_manager_visualizers(self):

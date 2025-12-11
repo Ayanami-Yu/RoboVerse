@@ -7,11 +7,12 @@ import torch
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 
-from roboverse_pack.tasks.beyondmimic.isaaclab.mdp.commands import MotionCommand
 from roboverse_pack.tasks.beyondmimic.isaaclab.mdp.rewards import _get_body_indexes
 
 if TYPE_CHECKING:
     from roboverse_pack.tasks.beyondmimic.isaaclab.manager_based_rl_env import ManagerBasedRLEnv
+
+    from roboverse_pack.tasks.beyondmimic.isaaclab.mdp.commands import MotionCommand
 
 
 # unused

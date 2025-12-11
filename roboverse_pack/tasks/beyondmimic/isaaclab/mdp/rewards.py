@@ -6,10 +6,11 @@ import torch
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor
 from isaaclab.utils.math import quat_error_magnitude
-from whole_body_tracking.tasks.tracking.mdp.commands import MotionCommand
 
 if TYPE_CHECKING:
     from roboverse_pack.tasks.beyondmimic.isaaclab.manager_based_rl_env import ManagerBasedRLEnv
+
+    from roboverse_pack.tasks.beyondmimic.isaaclab.mdp.commands import MotionCommand
 
 
 def _get_body_indexes(command: MotionCommand, body_names: list[str] | None) -> list[int]:

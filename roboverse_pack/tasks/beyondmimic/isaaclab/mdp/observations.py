@@ -5,10 +5,10 @@ from typing import TYPE_CHECKING
 import torch
 from isaaclab.utils.math import matrix_from_quat, subtract_frame_transforms
 
-from roboverse_pack.tasks.beyondmimic.isaaclab.mdp.commands import MotionCommand
-
 if TYPE_CHECKING:
     from roboverse_pack.tasks.beyondmimic.isaaclab.manager_based_rl_env import ManagerBasedRLEnv
+
+    from roboverse_pack.tasks.beyondmimic.isaaclab.mdp.commands import MotionCommand
 
 
 def robot_anchor_ori_w(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:  # unused

@@ -13,13 +13,12 @@ from typing import TYPE_CHECKING, Any, ClassVar
 import gymnasium as gym
 import numpy as np
 import torch
-import wandb
 from loguru import logger as log
 
 from metasim.scenario.scenario import ScenarioCfg
 from metasim.task.registry import register_task
 
-from .manager_based_env import ManagerBasedEnv
+from .manager_based_env_v2 import ManagerBasedEnvV2
 
 if TYPE_CHECKING:
     from isaaclab.envs.common import VecEnvStepReturn
@@ -27,8 +26,8 @@ if TYPE_CHECKING:
     from roboverse_learn.rl.configs.rsl_rl.ppo_tracking import RslRlPPOTrackingConfig
 
 
-@register_task("beyondmimic.tracking.isaaclab")
-class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):  # TODO check removing `gym.Env`
+@register_task("motion-tracking-isaaclab-v2")
+class ManagerBasedRLEnvV2(ManagerBasedEnvV2, gym.Env):  # TODO check removing `gym.Env`
     """The superclass for the manager-based workflow reinforcement learning-based environments.
 
     This class inherits from :class:`ManagerBasedEnv` and implements the core functionality for
@@ -67,6 +66,7 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):  # TODO check removing `gym.E
         args: RslRlPPOTrackingConfig,
         device: str | torch.device | None = None,
         render_mode: str | None = None,
+        reset_in_env_wrapper: bool = True,
     ):
         """Initialize the environment.
 
@@ -76,6 +76,7 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):  # TODO check removing `gym.E
             device: The used device.
             render_mode: The render mode for the environment. Defaults to None, which
                 is similar to ``"human"``.
+            reset_in_env_wrapper: Whether the env wrapper calls `env.reset()` in its `__init__()`.
         """
         assert scenario.simulator in ["isaaclab", "isaacsim"], (
             "Only Isaac Lab is supported for training of motion tracking task"
@@ -119,9 +120,9 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):  # TODO check removing `gym.E
         # -- set the framerate of the gym video recorder wrapper so that the playback speed of the produced video matches the simulation
         self.metadata["render_fps"] = 1 / self.step_dt
 
-        # use artifact for training
-        if args.use_wandb and args.registry_name:
-            wandb.run.use_artifact(args.registry_name)  # TODO check if this is correct
+        # TODO this is needed here because RoboVerse' `RslRlVecEnvWrapper` doesn't call `env.reset()` in its `__init__()`
+        if not reset_in_env_wrapper:
+            self.reset()
 
         log.info("[INFO]: Completed setting up the environment...")
 
@@ -131,7 +132,8 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):  # TODO check removing `gym.E
         parser = argparse.ArgumentParser()
         AppLauncher.add_app_launcher_args(parser)
         args = parser.parse_args([])
-        args.enable_cameras = True
+        # args.enable_cameras = True
+        args.enable_cameras = False  # TODO why this defaults to True in MetaSim?
         args.headless = headless
         app_launcher = AppLauncher(args)
 
@@ -391,7 +393,7 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):  # TODO check removing `gym.E
             )
 
     def close(self):
-        """Close the environment."""
+        """Close the environment and simulation app."""
         if not self._is_closed:
             # destructor is order-sensitive
             del self.command_manager

@@ -1,10 +1,6 @@
-"""Unitree RL task package for RoboVerse.
+"""BeyondMimic motion tracking task package for RoboVerse."""
 
-This package exposes environments and task wrappers used for legged robots
-and humanoids within the RoboVerse ecosystem.
-"""
-
-from __future__ import annotations
+"""from __future__ import annotations
 
 import importlib
 import traceback
@@ -26,4 +22,4 @@ def _auto_import_submodules() -> None:
             traceback.print_exc()
 
 
-_auto_import_submodules()
+_auto_import_submodules()"""

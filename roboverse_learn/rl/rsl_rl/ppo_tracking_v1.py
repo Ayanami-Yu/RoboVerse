@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '5'  # TODO debug only, remove this
+os.environ['CUDA_VISIBLE_DEVICES'] = '6'  # TODO debug only, remove this
 
 import random
 
@@ -18,9 +18,18 @@ from rsl_rl.runners import OnPolicyRunner
 
 rootutils.setup_root(__file__, pythonpath=True)
 
+# NOTE this script is for RSL-RL v2.3.0
+
 from roboverse_learn.rl.configs.rsl_rl.ppo_tracking import RslRlPPOTrackingConfig
-from roboverse_learn.rl.rsl_rl.env_wrapper import RslRlEnvWrapper
+from roboverse_learn.rl.rsl_rl.env_wrapper_tracking import TrackingRslRlVecEnvWrapper
 from metasim.task.registry import get_task_class
+
+
+# TODO are these necessary?
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
+torch.backends.cudnn.deterministic = False
+torch.backends.cudnn.benchmark = False
 
 
 def make_roboverse_env(args: RslRlPPOTrackingConfig):
@@ -50,7 +59,7 @@ def train(args: RslRlPPOTrackingConfig):
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
-    torch.backends.cudnn.deterministic = args.torch_deterministic
+    # torch.backends.cudnn.deterministic = args.torch_deterministic  # TODO does this influence the performance?
 
     device = torch.device(args.device if torch.cuda.is_available() and args.cuda else "cpu")
     print(f"Using device: {device}")
@@ -66,6 +75,9 @@ def train(args: RslRlPPOTrackingConfig):
             name=args.exp_name,
             save_code=True
         )
+        # use artifact for training
+        if args.registry_name:
+            wandb.run.use_artifact(args.registry_name)  # TODO check if this is correct
 
     # Create environment and wrapper
     print(f"Creating environment: {args.task} with {args.num_envs} environments")
@@ -75,7 +87,7 @@ def train(args: RslRlPPOTrackingConfig):
     train_cfg = args.train_cfg
 
     # Create environment wrapper
-    env_wrapper = RslRlEnvWrapper(env, train_cfg=train_cfg)
+    env_wrapper = TrackingRslRlVecEnvWrapper(env)
 
     runner = OnPolicyRunner(
         env=env_wrapper,
