@@ -202,7 +202,7 @@ class IsaacsimHandler(BaseSimHandler):
         # Initialize GS background if enabled
         self._build_gs_background()
         super().launch()
-        self.sim.reset()  # crucial for calling _initialize_callbacks in binded sensors
+        # self.sim.reset()  # crucial for calling _initialize_callbacks in binded sensors  # FIXME this causes simulation to stop?
 
     def close(self) -> None:
         log.info("close Isaacsim Handler")
