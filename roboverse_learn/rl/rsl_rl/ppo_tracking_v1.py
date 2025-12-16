@@ -77,7 +77,7 @@ def train(args: RslRlPPOTrackingConfig):
         )
         # use artifact for training
         if args.registry_name:
-            wandb.run.use_artifact(args.registry_name)  # TODO check if this is correct
+            wandb.run.use_artifact(args.registry_name)
 
     # Create environment and wrapper
     print(f"Creating environment: {args.task} with {args.num_envs} environments")
