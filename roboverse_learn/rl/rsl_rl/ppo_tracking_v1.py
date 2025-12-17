@@ -49,6 +49,7 @@ def make_roboverse_env(args: RslRlPPOTrackingConfig):
 
     # Pass env_cfg to task constructor
     # env = task_cls(scenario=scenario, device=device)
+    # NOTE pass `args` into init because task class requires motion file path
     env = task_cls(scenario=scenario, args=args, device=device)
     return env
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-from collections import deque
 from copy import deepcopy
 from dataclasses import asdict
 from typing import Any
@@ -35,30 +34,30 @@ class LeggedRobotTask(RLTaskEnv):
         BaseTaskEnv.__init__(self, scenario=scenario, device=device)
         self._initial_states = list_state_to_tensor(self.handler, self._get_initial_states(), self.device)
 
-        # buffers will be allocated lazily once handler is available
-        self.obs_buf_queue: deque[torch.Tensor] | None = None
-        self.priv_obs_buf_queue: deque[torch.Tensor] | None = None
-        self.actions: torch.Tensor | None = None
-        self.rew_buf: torch.Tensor | None = None
-        self.reset_buf: torch.Tensor | None = None
+        # TODO check buffers' init and remove these
+        # self.obs_buf_queue: deque[torch.Tensor] | None = None
+        # self.priv_obs_buf_queue: deque[torch.Tensor] | None = None
+        # self._action: torch.Tensor | None = None
+        # self.reward_buf: torch.Tensor | None = None
+        # self.reset_buf: torch.Tensor | None = None
 
         self.extras: dict[str, Any] = {}
-        self._default_env_states = deepcopy(self._initial_states)
-        self.setup_initial_env_states = deepcopy(self._initial_states)
+        # self._default_env_states = deepcopy(self._initial_states)
+        # self.setup_initial_env_states = deepcopy(self._initial_states)
         self.extras_buffer: dict[str, any] = {}
 
         # callbacks
         self._bind_callbacks(callbacks=_callbacks_cfg)
 
-        self.name = self.robot.name if hasattr(self, "robot") else getattr(self, "name", None)
-        self.num_actions = len(self.robot.actuators)
+        self.name = self.robot.name
+        self.total_action_dim = len(self.robot.actuators)
         self.sim_dt = self.scenario.sim_params.dt
         self.sorted_body_names = self.handler.get_body_names(self.name, sort=True)
         self.sorted_joint_names = self.handler.get_joint_names(self.name, sort=True)
         self.original_joint_names = self.handler.get_joint_names(self.name, sort=False)
 
         self._init_joint_cfg()
-        self._instantiate_cfg(self.cfg)
+        self._instantiate_cfg()
         self._init_buffers()
         self._setup()
         # self.reset()
@@ -83,37 +82,8 @@ class LeggedRobotTask(RLTaskEnv):
         self.terminate_callback = callbacks.pop("terminate", {})
         assert isinstance(self.terminate_callback, dict)
 
-    def _setup(self):
-        for _setup_fn, _params in self.setup_callback.values():
-            _setup_fn(env=self, **_params)
-
-    def _observation(self, env_states: TensorState) -> tuple[torch.Tensor, torch.Tensor | None]:
-        """Return (policy_obs, privileged_obs). Implemented by subclasses."""
-        raise NotImplementedError
-
-    def _instantiate_cfg(self, config: BaseEnvCfg | None):
-        self.cfg = config  # FIXME reassignment?
-        # value assignments from configs
-        self.decimation = self.cfg.control.decimation
-        self.step_dt = self.sim_dt * self.decimation
-
-        # NOTE actions, action scale, and action offset are in the original order
-        self.action_clip = self.cfg.control.action_clip
-        self.action_offset = self.default_dof_pos_original.clone() if self.cfg.control.action_offset else 0.0
-        if hasattr(self.robot, "action_scale"):  # per-actuator action scale
-            self.action_scale = (
-                torch.tensor(list(self.robot.action_scale.values()), device=self.device)
-                .unsqueeze(0)
-                .repeat(self.num_envs, 1)
-            )
-        else:
-            self.action_scale = self.cfg.control.action_scale
-
-        self.common_step_counter = 0
-        self.commands = MotionCommand(env=self, cfg=self.cfg.commands)
-
     def _init_joint_cfg(self):
-        """Parse default joint positions and torque limits from cfg."""
+        """Set position limits, default joint positions, and default joint velocities."""
         robot: G1TrackingCfg = self.robot
         sorted_joint_names: list[str] = self.sorted_joint_names
         original_joint_names: list[str] = self.original_joint_names
@@ -125,15 +95,12 @@ class LeggedRobotTask(RLTaskEnv):
             find_bodies(sorted_joint_names, original_joint_names, preserve_order=True)[0], device=self.device
         )
 
+        # set position limits
         dof_pos_limits = robot.joint_limits
         sorted_dof_pos_limits = [dof_pos_limits[joint] for joint in sorted_joint_names]
         self.dof_pos_limits = torch.tensor(sorted_dof_pos_limits, device=self.device)  # (n_dofs, 2)
 
-        soft_limit_factor = getattr(
-            self.cfg.control,
-            "soft_joint_pos_limit_factor",
-            getattr(self.robot, "soft_joint_pos_limit_factor", 1.0),
-        )
+        soft_limit_factor = getattr(robot, "soft_joint_pos_limit_factor", 0.9)
         _mid = (self.dof_pos_limits[:, 0] + self.dof_pos_limits[:, 1]) / 2.0
         _diff = self.dof_pos_limits[:, 1] - self.dof_pos_limits[:, 0]
 
@@ -146,60 +113,56 @@ class LeggedRobotTask(RLTaskEnv):
         )  # (n_envs, n_dofs, 2)
         self.soft_dof_pos_limits_original = self.soft_dof_pos_limits_sorted[:, self.sorted_to_original_joint_indexes, :]
 
-        dof_vel_limits = getattr(
-            robot,
-            "joint_velocity_limits",
-            [getattr(robot.actuators[name], "velocity_limit_sim", torch.inf) for name in sorted_joint_names],
-        )
-        self.dof_vel_limits = torch.tensor(dof_vel_limits, device=self.device)  # (n_dofs, 2)
-        self.soft_dof_vel_limits = self.dof_vel_limits * getattr(
-            self.cfg.control,
-            "soft_joint_vel_limit_factor",
-            getattr(self.robot, "soft_joint_vel_limit_factor", 1.0),
-        )
-
-        default_joint_pos = self.cfg.initial_states.robots[robot.name].get(
-            "default_joint_pos", robot.default_joint_positions
-        )
+        # set default joint positions
+        default_joint_pos = robot.default_joint_positions
         default_joint_pos = pattern_match(default_joint_pos, sorted_joint_names)
         sorted_joint_pos = [default_joint_pos[name] for name in sorted_joint_names]
         default_dof_pos = torch.tensor(sorted_joint_pos, device=self.device)  # (n_dofs,)
         self.default_dof_pos_sorted = default_dof_pos.unsqueeze(0).repeat(self.num_envs, 1)  # (n_envs, n_dofs)
         self.default_dof_pos_original = self.default_dof_pos_sorted[:, self.sorted_to_original_joint_indexes]
 
-        default_joint_vel = getattr(robot, "default_joint_velocities", 0)
-        if isinstance(default_joint_vel, dict):
-            default_joint_vel = pattern_match(default_joint_vel, sorted_joint_names)
-        sorted_joint_vel = (
-            [default_joint_vel[name] for name in sorted_joint_names]
-            if isinstance(default_joint_vel, dict)
-            else [default_joint_vel for _ in sorted_joint_names]
-        )
+        # set default joint velocities
+        default_joint_vel = robot.default_joint_velocities
+        default_joint_vel = pattern_match(default_joint_vel, sorted_joint_names)
+        sorted_joint_vel = [default_joint_vel[name] for name in sorted_joint_names]
         default_dof_vel = torch.tensor(sorted_joint_vel, device=self.device)  # (n_dofs,)
-        self.default_dof_vel = default_dof_vel.unsqueeze(0).repeat(self.num_envs, 1)  # (n_envs, n_dofs)
+        self.default_dof_vel_sorted = default_dof_vel.unsqueeze(0).repeat(self.num_envs, 1)  # (n_envs, n_dofs)
 
-    def _pre_physics_step(self, actions: torch.Tensor):
-        """Apply pre-physics callbacks."""
-        for pre_fn, _params in self.pre_physics_step_callback.values():
-            pre_fn(self, **_params)
-        # NOTE corresponds to action clipping in `RslRlVecEnvWrapper.step()` in Isaac Lab
-        return torch.clip(actions, -self.action_clip, self.action_clip) if self.action_clip else actions
+    def _instantiate_cfg(self):
+        self.decimation = self.cfg.decimation
+        self.step_dt = self.sim_dt * self.decimation
+
+        # NOTE actions, action scale, and action offset are in the original order
+        self.action_clip = self.robot.action_clip
+        self.action_offset = self.default_dof_pos_original.clone() if self.robot.action_offset else 0.0
+
+        # per-actuator action scale
+        self.action_scale = (
+            torch.tensor(list(self.robot.action_scale.values()), device=self.device)
+            .unsqueeze(0)
+            .repeat(self.num_envs, 1)
+        )
+
+        self.common_step_counter = 0  # counter for curriculum
+        self.commands = MotionCommand(env=self, cfg=self.cfg.commands)
 
     def _init_buffers(self):
-        self.actions = torch.zeros(
-            size=(self.num_envs, self.num_actions),
-            dtype=torch.float,
-            device=self.device,
-        )
+        self._action = torch.zeros(size=(self.num_envs, self.total_action_dim), device=self.device)
+        self._prev_action = torch.zeros_like(self._action)  # TODO use this instead of history buf
 
-        self.rew_buf = torch.zeros(size=(self.num_envs,), dtype=torch.float, device=self.device)
-        self.reset_buf = torch.zeros(
-            size=(self.num_envs,), dtype=torch.bool, device=self.device
-        )  # both time-out and reset
+        # self.reward_buf = torch.zeros(size=(self.num_envs,), dtype=torch.float, device=self.device)
+        # self.reset_buf = torch.zeros(
+        #     size=(self.num_envs,), dtype=torch.bool, device=self.device
+        # )  # both time-out and reset
+
+        # prepare extra info to store individual termination term information
+        self._term_dones = dict()
+        for term_name in asdict(self.cfg.terminations).keys():
+            self._term_dones[term_name] = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
 
         # record terminated envs for adapting sampling
-        self.terminated_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
-        self.truncated_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        self.reset_terminated = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        self.reset_time_outs = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
 
         # set gravity vector
         self.up_axis_idx = 2
@@ -210,30 +173,30 @@ class LeggedRobotTask(RLTaskEnv):
         ).repeat((self.num_envs, 1))
 
         # reset commands
-        self.commands.reset()  # TODO no need to record the command metrics here?
+        # TODO verify that this is not necessary since `reset()` will be called in `__init__()` (if the env wrapper doesn't call `reset()`)
+        # self.commands.reset()  # TODO no need to record the command metrics here?
 
         # history buffer (action) for reward computation
-        self.history_buffer = {}
-        self.history_buffer["actions"] = deque([self.actions.clone() * 0.0], maxlen=2)
-        # self.history_buffer["joint_vel"] = deque([self.actions.clone() * 0.0], maxlen=2)  # TODO remove this
+        # self.history_buffer = {}
+        # self.history_buffer["actions"] = deque([self._action.clone() * 0.0], maxlen=2)
 
         # for observation history
-        env_states = self.handler.get_states()
-        obs_single, priv_obs_single = self._observation(env_states)
-        self.obs_buf_queue = deque(
-            [deepcopy(obs_single * 0.0) for _ in range(self.cfg.obs_len_history)],
-            maxlen=self.cfg.obs_len_history,
-        )
-        self.priv_obs_buf_queue = deque(
-            [deepcopy(priv_obs_single * 0.0) for _ in range(self.cfg.priv_obs_len_history)],
-            maxlen=self.cfg.priv_obs_len_history,
-        )
+        # env_states = self.handler.get_states()
+        # obs_single, priv_obs_single = self._observation(env_states)
+        # self.obs_buf_queue = deque(
+        #     [deepcopy(obs_single * 0.0) for _ in range(self.cfg.obs_len_history)],
+        #     maxlen=self.cfg.obs_len_history,
+        # )
+        # self.priv_obs_buf_queue = deque(
+        #     [deepcopy(priv_obs_single * 0.0) for _ in range(self.cfg.priv_obs_len_history)],
+        #     maxlen=self.cfg.priv_obs_len_history,
+        # )
 
         # for logging
-        self.episode_not_terminated = {
-            _key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
-            for _key in self.terminate_callback.keys()
-        }  # FIXME why is this float instead of bool?
+        # self.episode_not_terminated = {
+        #     _key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
+        #     for _key in self.terminate_callback.keys()
+        # }  # FIXME why is this float instead of bool?
         self.episode_rewards = {
             name: torch.zeros(
                 self.num_envs,
@@ -244,6 +207,18 @@ class LeggedRobotTask(RLTaskEnv):
             for name in asdict(self.cfg.rewards).keys()
         }
 
+    def _setup(self):
+        """Apply domain randomization of start-up mode."""
+        for _setup_fn, _params in self.setup_callback.values():
+            _setup_fn(env=self, **_params)
+
+    def _pre_physics_step(self, actions: torch.Tensor):
+        """Apply pre-physics callbacks."""
+        for pre_fn, _params in self.pre_physics_step_callback.values():
+            pre_fn(self, **_params)
+        # NOTE corresponds to action clipping in `RslRlVecEnvWrapper.step()` in Isaac Lab
+        return torch.clip(actions, -self.action_clip, self.action_clip) if self.action_clip else actions
+
     def reset(self, env_ids: torch.Tensor | list[int] | None = None):
         """Reset selected envs (defaults to all)."""
         if env_ids is None:
@@ -252,29 +227,30 @@ class LeggedRobotTask(RLTaskEnv):
         self.extras["episode"] = {}
 
         # update the curriculum for environments that need a reset
-        if self.cfg.curriculum.enabled:
-            for _name, _func in self.cfg.curriculum.funcs.items():
-                _return_val = _func(self, env_ids)
-                self.extras["episode"]["Curriculum/" + _name] = _return_val
 
-        # reset the internal buffers of the scene elements  # TODO is this needed?
+        # reset the internal buffers of the scene elements (actions, sensors, etc.)
+        # TODO reset contact sensor
 
         # apply events such as randomizations for environments that need a reset
         for _reset_fn, _params in self.reset_callback.values():
             _ = _reset_fn(self, env_ids, **_params)
-        self.set_states(states=self.setup_initial_env_states, env_ids=env_ids)
+        # self.set_states(states=self.setup_initial_env_states, env_ids=env_ids)
+        self.set_states(states=self._initial_states, env_ids=env_ids)
 
         # reset observations
-        for _obs in self.obs_buf_queue:
-            _obs[env_ids] = 0.0
-        for _priv_obs in self.priv_obs_buf_queue:
-            _priv_obs[env_ids] = 0.0
+        # for _obs in self.obs_buf_queue:
+        #     _obs[env_ids] = 0.0
+        # for _priv_obs in self.priv_obs_buf_queue:
+        #     _priv_obs[env_ids] = 0.0
 
-        # reset actions and other history buffers
-        self.actions[env_ids] = 0.0
-        for history in self.history_buffer.values():
-            for item in history:
-                item[env_ids] = 0.0
+        # reset actions
+        self._prev_action[env_ids] = 0.0
+        self._action[env_ids] = 0.0
+
+        # reset history buffers
+        # for history in self.history_buffer.values():
+        #     for item in history:
+        #         item[env_ids] = 0.0
 
         # reset rewards
         # self.rew_buf[env_ids] = 0.0  # FIXME why did this even exist?
@@ -293,12 +269,17 @@ class LeggedRobotTask(RLTaskEnv):
 
         # reset events
 
+        # for key in self.episode_not_terminated.keys():
+        #     self.extras["episode"]["Episode_Termination/" + key] = (
+        #         torch.mean(self.episode_not_terminated[key][env_ids]) / self.max_episode_steps
+        #     )
+        #     self.episode_not_terminated[key][env_ids] = 0.0
+
         # reset terminations
-        for key in self.episode_not_terminated.keys():
-            self.extras["episode"]["Episode_Termination/" + key] = (
-                torch.mean(self.episode_not_terminated[key][env_ids]) / self.max_episode_steps
-            )
-            self.episode_not_terminated[key][env_ids] = 0.0
+        for key in self._term_dones.keys():
+            self.extras["episode"]["Episode_Termination/" + key] = torch.count_nonzero(
+                self._term_dones[key][env_ids]
+            ).item()
 
         # reset the episode length buffer
         self._episode_steps[env_ids] = 0
@@ -308,15 +289,18 @@ class LeggedRobotTask(RLTaskEnv):
         actions: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
         """Apply actions, simulate for `decimation` steps, and compute RLTask-style outputs."""
-        if not isinstance(actions, torch.Tensor):
-            actions = torch.as_tensor(actions, device=self.device, dtype=torch.float32)
+        # if not isinstance(actions, torch.Tensor):
+        #     actions = torch.as_tensor(actions, device=self.device, dtype=torch.float32)
+        # TODO check when `self.num_envs == 1` and consider removing this
         if actions.ndim == 1:
             actions = actions.unsqueeze(0)
 
-        # NOTE `self.actions` is in the original order since it's computed inside `OnPolicyRunner`
+        # NOTE `actions` is in the original order since it's computed inside `OnPolicyRunner`
         actions = self._pre_physics_step(actions)
-        self.actions[:] = actions  # original order
-        processed_actions = self.actions * self.action_scale + self.action_offset
+        self._prev_action[:] = self._action
+        self._action[:] = actions.to(self.device)
+
+        processed_actions = self._action * self.action_scale + self.action_offset
         if self.action_clip is not None:
             processed_actions = processed_actions.clip(-self.action_clip, self.action_clip)
         processed_actions = processed_actions.clone()[:, self.original_to_sorted_joint_indexes]  # sorted order
@@ -327,19 +311,21 @@ class LeggedRobotTask(RLTaskEnv):
         self._post_physics_step(env_states)
 
         # NOTE for RSL-RL v2.3.0
-        self.extras["observations"] = {"policy": self.obs_buf, "critic": self.priv_obs_buf}
+        # TODO is this necessary? consider removing this
+        self.extras["observations"] = self._obs_buf
 
         return (
-            self.obs_buf,
-            self.rew_buf,
-            self.reset_buf,
+            self._obs_buf,
+            self.reward_buf,
+            self.reset_terminated,
+            self.reset_time_outs,
             self.extras,
         )
 
     def _physics_step(self, actions: torch.Tensor) -> TensorState:
         """Issue low-level actions and simulate one physics step."""
         self.handler.set_dof_targets(actions)
-        self.handler.simulate()  # decimation control in task_env level
+        self.handler.simulate()
         return self.handler.get_states()
 
     def _post_physics_step(self, env_states: TensorState):
@@ -347,17 +333,18 @@ class LeggedRobotTask(RLTaskEnv):
         self.common_step_counter += 1  # total step (common for all envs)
 
         # check termination conditions and compute rewards
-        self.reset_buf[:] = self._terminated(env_states)
-        self.rew_buf[:] = self._reward(env_states)
+        self.reset_buf = self._terminated(env_states)
+        self.reward_buf = self._reward(env_states)
 
         # reset envs and MDP
         reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         if len(reset_env_ids) > 0:
             self.reset(env_ids=reset_env_ids)
-            # TODO check the corresponding code to the commented lines
+            # TODO is `write_data_to_sim()` necessary?
             # update articulation kinematics
-            # self.scene.write_data_to_sim()
+            # self.scene.write_data_to_sim() -> articulation.write_data_to_sim() -> articulation._apply_actuator_model() -> root_physx_view.set_dof_position_targets()
             # self.sim.forward()
+            env_states = self.handler.get_states()  # TODO check after adding this
 
         # update commands
         self.commands.compute(env_states)
@@ -367,62 +354,69 @@ class LeggedRobotTask(RLTaskEnv):
             _step_fn(self, env_states, **_params)
 
         # compute observations after resets
-        obs_single, priv_single = self._observation(env_states)
+        # obs_single, priv_single = self._observation(env_states)
         # append to observation history buffers
-        self.obs_buf_queue.append(obs_single)
-        if priv_single is not None and self.priv_obs_buf_queue.maxlen > 0:
-            self.priv_obs_buf_queue.append(priv_single)
+        # self.obs_buf_queue.append(obs_single)
+        # if priv_single is not None and self.priv_obs_buf_queue.maxlen > 0:
+        #     self.priv_obs_buf_queue.append(priv_single)
+
+        self._obs_buf = self._observation(env_states)
 
         # copy to the history buffer
         # TODO verify whether history length of 1 equals not using history
-        for key, history in self.history_buffer.items():
-            if hasattr(self, key):
-                history.append(getattr(self, key).clone())
-            elif hasattr(env_states.robots[self.name], key):
-                history.append(getattr(env_states.robots[self.name], key).clone())
-            else:
-                raise ValueError(f"History buffer key {key} not found in task or robot states.")
+        # for key, history in self.history_buffer.items():
+        #     if hasattr(self, key):
+        #         history.append(getattr(self, key).clone())
+        #     elif hasattr(env_states.robots[self.name], key):
+        #         history.append(getattr(env_states.robots[self.name], key).clone())
+        #     else:
+        #         raise ValueError(f"History buffer key {key} not found in task or robot states.")
 
     def _reward(self, env_states: TensorState):
         rew_buf = torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
         for name, term_cfg in asdict(self.cfg.rewards).items():
-            # TODO multiply `step_dt` or not
-            if term_cfg["params"]:
-                value = term_cfg["func"](self, env_states, **term_cfg["params"]) * term_cfg["weight"] * self.step_dt
-            else:
-                value = term_cfg["func"](self, env_states) * term_cfg["weight"] * self.step_dt
+            value = term_cfg["func"](self, env_states, **term_cfg["params"]) * term_cfg["weight"] * self.step_dt
             rew_buf += value  # update total reward
             self.episode_rewards[name] += value  # update episodic sum
 
         return rew_buf
 
     def _terminated(self, env_states: TensorState | None) -> torch.BoolTensor:
-        reset_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
-        for _key in self.terminate_callback.keys():
-            _terminate_fn, _params = self.terminate_callback[_key]
-            _terminate_flag = (_terminate_fn(self, env_states, **_params)).detach().clone().to(torch.bool)
-            reset_buf = torch.logical_or(reset_buf, _terminate_flag)
-            self.episode_not_terminated[_key] += _terminate_flag.to(torch.float)
-        return reset_buf
+        # reset_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        # for _key in self.terminate_callback.keys():
+        #     _terminate_fn, _params = self.terminate_callback[_key]
+        #     _terminate_flag = (_terminate_fn(self, env_states, **_params)).detach().clone().to(torch.bool)
+        #     reset_buf = torch.logical_or(reset_buf, _terminate_flag)
+        #     self.episode_not_terminated[_key] += _terminate_flag.to(torch.float)
+
+        self.reset_time_outs[:] = False
+        self.reset_terminated[:] = False
+        for name, term_cfg in asdict(self.cfg.terminations).items():
+            value = term_cfg["func"](self, env_states, **term_cfg["params"])
+            # store timeout signal separately
+            if term_cfg["time_out"]:
+                self.reset_time_outs |= value
+            else:
+                self.reset_terminated |= value
+            # add to episode dones
+            self._term_dones[name][:] = value
+
+        return self.reset_time_outs | self.reset_terminated
+
+    def _observation(self, env_states: TensorState) -> tuple[torch.Tensor, torch.Tensor | None]:
+        """Return a dictionary with keys "policy" and "critic", each corresponding to a tensor."""
+        raise NotImplementedError
 
     def _get_initial_states(self):
         """Return list of per-env initial states derived from config."""
         sorted_joint_names = self.handler.get_joint_names(self.robot.name, sort=True)
 
-        robot_state = self.cfg.initial_states.robots[self.robot.name]
-        pos = robot_state.get("pos", [0.0, 0.0, 0.5])  # TODO verify the default values
-        rot = robot_state.get("rot", [1.0, 0.0, 0.0, 0.0])
-
-        joint_pos = robot_state.get(  # TODO check this
-            "joint_pos",
-            robot_state.get("default_joint_pos", self.robot.default_joint_positions),
-        )
+        pos = self.robot.default_pos
+        rot = self.robot.default_rot
+        joint_pos = self.robot.default_joint_positions
         joint_pos = pattern_match(joint_pos, sorted_joint_names)
 
-        joint_vel = robot_state.get(
-            "joint_vel",
-            robot_state.get("default_joint_vel", getattr(self.robot, "default_joint_velocities", {})),
-        )
+        joint_vel = self.robot.default_joint_velocities
         joint_vel = pattern_match(joint_vel, sorted_joint_names)
 
         template = {
@@ -457,19 +451,23 @@ class LeggedRobotTask(RLTaskEnv):
 
     @property
     def obs_buf(self) -> torch.Tensor:
-        """Stacked observation buffer with history along features."""
-        if self.obs_buf_queue is None or len(self.obs_buf_queue) == 0:
-            raise RuntimeError("Observation buffer not initialized.")
-        return torch.cat(list(self.obs_buf_queue), dim=1)
+        """Policy (actor) observations in shape (num_envs, num_obs)."""
+        # """Stacked observation buffer with history along features."""
+        # if self.obs_buf_queue is None or len(self.obs_buf_queue) == 0:
+        #     raise RuntimeError("Observation buffer not initialized.")
+        # return torch.cat(list(self.obs_buf_queue), dim=1)
+        return self._obs_buf["policy"]
 
     @property
     def priv_obs_buf(self) -> torch.Tensor:
-        """Stacked privileged observation buffer with history along features."""
-        if self.priv_obs_buf_queue is None or len(self.priv_obs_buf_queue) == 0:
-            raise RuntimeError("Privileged observation buffer not initialized.")
-        return torch.cat(list(self.priv_obs_buf_queue), dim=1)
+        """Critic observations in shape (num_envs, num_priv_obs)."""
+        # """Stacked privileged observation buffer with history along features."""
+        # if self.priv_obs_buf_queue is None or len(self.priv_obs_buf_queue) == 0:
+        #     raise RuntimeError("Privileged observation buffer not initialized.")
+        # return torch.cat(list(self.priv_obs_buf_queue), dim=1)
+        return self._obs_buf["critic"]
 
-    @property
-    def default_env_states(self) -> TensorState:
-        """Initial environment states used for resets."""
-        return self._default_env_states
+    # @property
+    # def default_env_states(self) -> TensorState:
+    #     """Initial environment states used for resets."""
+    #     return self._default_env_states

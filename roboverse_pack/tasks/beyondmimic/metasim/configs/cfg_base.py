@@ -11,10 +11,10 @@ class CallbacksCfg:
     """Configuration for callbacks."""
 
     setup: dict = {}
-    reset: dict = {}  # func_name: (func(env, env_ids,**kwargs), kwargs)
-    pre_step: dict = {}  # func_name: (func(env, actions, **kwargs), kwargs)
-    post_step: dict = {}  # func_name: (func(env, env_states, **kwargs), kwargs)
-    terminate: dict = {}  # func_name: (func(env, env_states, **kwargs), kwargs)
+    reset: dict = {}
+    pre_step: dict = {}
+    post_step: dict = {}
+    # terminate: dict = {}  # TODO deprecated, remove this
     query: dict = {}
 
 
@@ -25,60 +25,13 @@ class BaseEnvCfg:
     max_episode_length_s = 10.0
     obs_len_history = 1  # number of past observations to include in the observation
     priv_obs_len_history = 1  # number of past privileged observations to include in the privileged observation
-
-    @configclass
-    class Control:
-        """Configuration for control."""
-
-        torque_limits_factor: float = 1.0  # scale torque limits from urdf  # TODO check this
-        soft_joint_pos_limit_factor: float = 0.9
-        action_clip: float | None = None  # TODO check this
-        action_scale = 0.25
-        action_offset = True  # offset actions by `default_dof_pos_original` specified in the task class
-        decimation = 4  # task-level
-
-    control = Control()
-
-    @configclass
-    class Curriculum:
-        """Configuration for curriculum."""
-
-        enabled = False
-        funcs: dict[str, Callable] = MISSING
-
-    curriculum = Curriculum()
-
-    class InitialStates:
-        """Configuration for initial states."""
-
-        objects = {}
-        robots = {
-            "g1_tracking": {  # TODO check if this will override `IsaacsimHandler._add_robot()`
-                "pos": [0.0, 0.0, 0.76],
-                "default_joint_pos": {
-                    ".*_hip_pitch_joint": -0.312,
-                    ".*_knee_joint": 0.669,
-                    ".*_ankle_pitch_joint": -0.363,
-                    ".*_elbow_joint": 0.6,
-                    "left_shoulder_roll_joint": 0.2,
-                    "left_shoulder_pitch_joint": 0.2,
-                    "right_shoulder_roll_joint": -0.2,
-                    "right_shoulder_pitch_joint": 0.2,
-                },
-            }
-        }
-
-    initial_states = InitialStates()
+    decimation = 4  # task-level
 
     callbacks_setup: dict[str, tuple[Callable, dict] | Callable] = {}
-    # func_name: (func(env, env_ids,**kwargs), kwargs)
     callbacks_reset: dict[str, tuple[Callable, dict] | Callable] = {}
-    # func_name: (func(env, env_states, **kwargs), kwargs)
     callbacks_pre_step: dict[str, tuple[Callable, dict] | Callable] = {}
-    # func_name: (func(env, actions, **kwargs), kwargs)
     callbacks_post_step: dict[str, tuple[Callable, dict] | Callable] = {}
-    # func_name: (func(env, env_states, **kwargs), kwargs)
-    callbacks_terminate: dict[str, tuple[Callable, dict] | Callable] = MISSING
+    # callbacks_terminate: dict[str, tuple[Callable, dict] | Callable] = MISSING
     callbacks_query: dict[str, tuple[Callable, dict] | Callable] = MISSING
 
     def __post_init__(self):
@@ -88,7 +41,7 @@ class BaseEnvCfg:
 
         self.callbacks = CallbacksCfg()
         self.callbacks.query = _normalize(self.callbacks_query)
-        self.callbacks.terminate = _normalize(self.callbacks_terminate)
+        # self.callbacks.terminate = _normalize(self.callbacks_terminate)
         self.callbacks.setup = _normalize(self.callbacks_setup)
         self.callbacks.reset = _normalize(self.callbacks_reset)
         self.callbacks.pre_step = _normalize(self.callbacks_pre_step)

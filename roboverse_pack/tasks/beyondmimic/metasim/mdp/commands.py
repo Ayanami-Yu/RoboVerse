@@ -154,7 +154,7 @@ class MotionCommand:
         self.metrics = {k: torch.zeros(env.num_envs, device=env.device) for k in metrics}
 
     def _adaptive_sampling(self, env_ids: Sequence[int]):
-        episode_failed = self.env.terminated_buf[env_ids]
+        episode_failed = self.env.reset_terminated[env_ids]  # excluding time-out buf
         if torch.any(episode_failed):
             current_bin_index = torch.clamp(
                 (self.time_steps * self.bin_count) // max(self.motion.time_step_total, 1), 0, self.bin_count - 1
@@ -166,7 +166,7 @@ class MotionCommand:
         sampling_probabilities = self.bin_failed_count + self.cfg.adaptive_uniform_ratio / float(self.bin_count)
         sampling_probabilities = torch.nn.functional.pad(
             sampling_probabilities.unsqueeze(0).unsqueeze(0),
-            (0, self.cfg.adaptive_kernel_size - 1),  # Non-causal kernel
+            (0, self.cfg.adaptive_kernel_size - 1),  # non-causal kernel
             mode="replicate",
         )
         sampling_probabilities = torch.nn.functional.conv1d(sampling_probabilities, self.kernel.view(1, 1, -1)).view(-1)
@@ -233,7 +233,8 @@ class MotionCommand:
         env_states.robots[self.env.name].root_state[env_ids, :] = torch.cat(
             [root_pos[env_ids], root_ori[env_ids], root_lin_vel[env_ids], root_ang_vel[env_ids]], dim=-1
         )
-        self.env.handler.set_states(env_states, env_ids)  # TODO test if this is correct
+        # NOTE tensors in `env_states` will be cloned inside `set_states()`
+        self.env.handler.set_states(env_states, env_ids)
 
     def _update_command(self, env_states: TensorState):
         # pick new time steps using adaptive sampling for the envs that have reached the end of the motion
@@ -362,7 +363,9 @@ class MotionCommand:
     @property
     def body_pos_w(self) -> torch.Tensor:
         """Get the body positions in world frame."""
-        return self.motion.body_pos_w[self.time_steps] + self.env.handler.scene.env_origins[:, None, :]
+        # return self.motion.body_pos_w[self.time_steps] + self.env.handler.scene.env_origins[:, None, :]
+        # NOTE handler's `_set_states()` and `_get_states()` will handle `env_origins` internally (subtracts after getting states, and adds before setting states)
+        return self.motion.body_pos_w[self.time_steps]
 
     @property
     def body_quat_w(self) -> torch.Tensor:
@@ -382,9 +385,8 @@ class MotionCommand:
     @property
     def anchor_pos_w(self) -> torch.Tensor:
         """Get the anchor position in world frame."""
-        return (
-            self.motion.body_pos_w[self.time_steps, self.motion_anchor_body_index] + self.env.handler.scene.env_origins
-        )
+        # return self.motion.body_pos_w[self.time_steps, self.motion_anchor_body_index] + self.env.handler.scene.env_origins
+        return self.motion.body_pos_w[self.time_steps, self.motion_anchor_body_index]
 
     @property
     def anchor_quat_w(self) -> torch.Tensor:

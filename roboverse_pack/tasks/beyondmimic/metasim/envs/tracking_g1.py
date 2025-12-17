@@ -10,14 +10,15 @@ from metasim.scenario.scenario import ScenarioCfg
 from metasim.scenario.simulator_params import SimParamCfg
 from metasim.task.registry import register_task
 from metasim.types import TensorState
+from roboverse_learn.rl.configs.rsl_rl.ppo_tracking import RslRlPPOTrackingConfig
 from roboverse_pack.tasks.beyondmimic.metasim.configs.tracking_g1 import TrackingG1EnvCfg
 
 from .base_legged_robot import LeggedRobotTask
 
 
-@register_task("motion-tracking-v1")
+@register_task("motion-tracking")
 class TrackingG1Task(LeggedRobotTask):
-    """Registered humanoid locomotion task."""
+    """Registered BeyondMimic motion tracking task."""
 
     # env_cfg_cls = TrackingG1EnvCfg
     # train_cfg_cls = TrackingG1RslRlTrainCfg
@@ -28,10 +29,10 @@ class TrackingG1Task(LeggedRobotTask):
         objects=[],
         cameras=[],
         num_envs=2,
-        simulator="isaaclab",
+        simulator="isaacsim",
         headless=True,
         env_spacing=2.5,
-        decimation=1,  # NOTE task-level decimation is defined in `self.cfg.control`
+        decimation=1,  # NOTE task-level decimation is defined by `self.cfg.decimation`
         sim_params=SimParamCfg(  # TODO why this is not even the default values of `PhysxCfg` in Isaac Lab?
             dt=0.005,
             substeps=1,
@@ -61,6 +62,7 @@ class TrackingG1Task(LeggedRobotTask):
     def __init__(
         self,
         scenario: ScenarioCfg,
+        args: RslRlPPOTrackingConfig,
         device: str | torch.device,
         # env_cfg: TrackingG1EnvCfg,
         reset_in_env_wrapper: bool = True,
@@ -68,7 +70,10 @@ class TrackingG1Task(LeggedRobotTask):
         scenario_copy = copy.deepcopy(scenario)
         scenario_copy.__post_init__()
 
-        super().__init__(scenario=scenario_copy, config=TrackingG1EnvCfg(), device=device)
+        cfg = TrackingG1EnvCfg()
+        cfg.commands.motion_file = args.motion_file
+
+        super().__init__(scenario=scenario_copy, config=cfg, device=device)
         if not reset_in_env_wrapper:
             self.reset()
 
@@ -94,10 +99,11 @@ class TrackingG1Task(LeggedRobotTask):
         for group_name in ["policy", "critic"]:
             obs_buf[group_name] = self._compute_observation_group(env_states, group_name)
 
-        return obs_buf["policy"], obs_buf["critic"]
+        # return obs_buf["policy"], obs_buf["critic"]
+        return obs_buf
 
-    def _terminated(self, env_states: TensorState | None) -> torch.BoolTensor:
-        """Override to record terminated (with time-out excluded) envs for adapting sampling."""
+    """def _terminated(self, env_states: TensorState | None) -> torch.BoolTensor:
+        # Override to record terminated (with time-out excluded) envs for adapting sampling
         self.terminated_buf[:] = False
         self.truncated_buf[:] = False
         for _key in self.terminate_callback.keys():
@@ -108,4 +114,4 @@ class TrackingG1Task(LeggedRobotTask):
             else:
                 self.terminated_buf = torch.logical_or(self.terminated_buf, _flag)
             self.episode_not_terminated[_key] += _flag.to(torch.float)
-        return torch.logical_or(self.terminated_buf, self.truncated_buf)
+        return torch.logical_or(self.terminated_buf, self.truncated_buf)"""

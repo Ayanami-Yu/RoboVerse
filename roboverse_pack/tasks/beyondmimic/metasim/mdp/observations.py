@@ -112,7 +112,7 @@ def joint_pos_rel(env: LeggedRobotTask, env_states: TensorState) -> torch.Tensor
 def joint_vel_rel(env: LeggedRobotTask, env_states: TensorState):
     """The joint velocities of the robot w.r.t. the default joint velocities."""
     robot_state = env_states.robots[env.name]
-    joint_vel_sorted = robot_state.joint_vel - env.default_dof_vel
+    joint_vel_sorted = robot_state.joint_vel - env.default_dof_vel_sorted
     return joint_vel_sorted[:, env.sorted_to_original_joint_indexes]  # (n_envs, n_dofs)
 
 
@@ -120,4 +120,5 @@ def last_action(env: LeggedRobotTask, env_states: TensorState) -> torch.Tensor:
     """The last input action to the environment."""
     # return env.action_manager.action
     # TODO check if this is correct
-    return env.history_buffer["actions"][-1]  # (n_envs, n_dofs)
+    # return env.history_buffer["actions"][-1]  # (n_envs, n_dofs)
+    return env._action  # TODO not `env._prev_action`?

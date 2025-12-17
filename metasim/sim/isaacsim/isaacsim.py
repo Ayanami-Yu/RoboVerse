@@ -566,7 +566,7 @@ class IsaacsimHandler(BaseSimHandler):
         if self._physics_step_counter < 5:
             self._update_camera_pose()
 
-        self._physics_step_counter += 1
+        # self._physics_step_counter += 1  # FIXME incorrect update logic
 
     def _add_robot(self, robot: ArticulationObjCfg) -> None:
         import isaaclab.sim as sim_utils
@@ -842,7 +842,6 @@ class IsaacsimHandler(BaseSimHandler):
         dynamic_friction = getattr(ground_cfg, "dynamic_friction", 1.0) if ground_cfg is not None else 1.0
         restitution = getattr(ground_cfg, "restitution", 0.0) if ground_cfg is not None else 0.0
 
-        # TODO check if this needs to be aligned
         terrain_config = TerrainImporterCfg(
             prim_path="/World/ground",
             terrain_type="generator",
@@ -1122,7 +1121,8 @@ class IsaacsimHandler(BaseSimHandler):
         contact_sensor_config: ContactSensorCfg = ContactSensorCfg(
             prim_path=f"/World/envs/env_.*/{self.robots[0].name}/.*",
             history_length=3,
-            update_period=0.005,
+            # update_period=0.005,
+            force_threshold=10.0,  # TODO check whether this modification is necessary
             track_air_time=True,
         )
         self.contact_sensor = ContactSensor(contact_sensor_config)

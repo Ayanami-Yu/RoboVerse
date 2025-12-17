@@ -4,7 +4,7 @@ from dataclasses import MISSING
 
 from metasim.scenario.robot import BaseActuatorCfg, RobotCfg
 from metasim.utils import configclass
-from roboverse_learn.rl.beyondmimic.helper.string_utils import resolve_matching_names_values
+from roboverse_pack.tasks.beyondmimic.metasim.utils.string import resolve_matching_names_values
 
 ASSET_DIR = "roboverse_data"
 
@@ -67,6 +67,8 @@ class G1TrackingCfg(RobotCfg):
         "right_shoulder_roll_joint": -0.2,
         "right_shoulder_pitch_joint": 0.2,
     }
+    default_joint_velocities = {".*": 0.0}
+    default_rot = (1.0, 0.0, 0.0, 0.0)
     soft_joint_pos_limit_factor = 0.9
 
     # NOTE joint position limits obtained through `Articulation.root_physx_view.get_dof_limits()` in Isaac Lab
@@ -224,6 +226,8 @@ class G1TrackingCfg(RobotCfg):
     }
     actuators: dict[str, BaseActuatorCfg] = dict()
     action_scale: dict[str, float] = dict()
+    action_clip: float | None = None
+    action_offset: bool = True  # offset actions by `default_dof_pos_original` specified in the task class
 
     def __post_init__(self):
         actuators = {}

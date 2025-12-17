@@ -5,7 +5,6 @@ from typing import Callable
 
 from metasim.utils import configclass
 from roboverse_pack.tasks.beyondmimic.metasim.mdp import (
-    events,
     observations,
     rewards,
     terminations,
@@ -14,7 +13,6 @@ from roboverse_pack.tasks.beyondmimic.metasim.mdp.commands import MotionCommandC
 
 from .cfg_base import BaseEnvCfg
 from .cfg_queries import ContactForces
-from .cfg_randomizers import MassRandomizer, MaterialRandomizer
 
 VELOCITY_RANGE = {
     # linear velocity
@@ -34,7 +32,7 @@ class CfgTerm:
     """Configuration for terminal functions."""
 
     func: Callable = MISSING
-    params: dict[str, any] | None = None
+    params: dict[str, any] = {}
 
 
 @configclass
@@ -49,6 +47,13 @@ class RewTerm(CfgTerm):
     """Configuration for reward functions."""
 
     weight: float = 1.0
+
+
+@configclass
+class DoneTerm(CfgTerm):
+    """Configuration for terminal functions."""
+
+    time_out: bool = False
 
 
 @configclass
@@ -119,10 +124,29 @@ class RewardsCfg:
 
 
 @configclass
+class TerminationsCfg:
+    """Configuration for terminations."""
+
+    time_out = DoneTerm(func=terminations.time_out, time_out=True)
+    anchor_pos = DoneTerm(func=terminations.bad_anchor_pos_z_only, params={"threshold": 0.25})
+    anchor_ori = DoneTerm(func=terminations.bad_anchor_ori, params={"threshold": 0.8})
+    ee_body_pos = DoneTerm(
+        func=terminations.bad_motion_body_pos_z_only,
+        params={
+            "threshold": 0.25,
+            "body_names": [
+                "left_ankle_roll_link",
+                "right_ankle_roll_link",
+                "left_wrist_yaw_link",
+                "right_wrist_yaw_link",
+            ],
+        },
+    )
+
+
+@configclass
 class TrackingG1EnvCfg(BaseEnvCfg):
     """Environment configuration for humanoid motion tracking task."""
-
-    control = BaseEnvCfg.Control(action_scale=0.25, soft_joint_pos_limit_factor=0.9)
 
     commands = MotionCommandCfg(
         anchor_body_name="torso_link",
@@ -154,13 +178,16 @@ class TrackingG1EnvCfg(BaseEnvCfg):
         velocity_range=VELOCITY_RANGE,
         joint_position_range=(-0.1, 0.1),
     )
-    observations = ObservationsCfg()  # TODO compute obs
+    observations = ObservationsCfg()
     rewards = RewardsCfg()
+    terminations = TerminationsCfg()
 
     # NOTE extra obs will be included in `env_states.extras["contact_forces"]`
     callbacks_query = {"contact_forces": ContactForces(history_length=3)}
+
     # TODO fully align domain randomization with BeyondMimic
-    callbacks_setup = {
+    # TODO uncomment DR after debugging evaluation pipeline
+    """callbacks_setup = {
         "material_randomizer": MaterialRandomizer(
             obj_name="g1_tracking",
             static_friction_range=(0.3, 1.6),
@@ -175,7 +202,7 @@ class TrackingG1EnvCfg(BaseEnvCfg):
             mass_distribution_params=(-1.0, 3.0),  # TODO change this
             operation="add",
         ),
-        # NOTE `env` will be passed to the functions inside `AgentTask._bind_callbacks()`
+        # NOTE `env` will be passed to the functions inside `LeggedRobotTask._bind_callbacks()`
         "add_joint_default_pos": (
             events.randomize_joint_default_pos,
             {
@@ -185,7 +212,7 @@ class TrackingG1EnvCfg(BaseEnvCfg):
         ),
     }
     callbacks_post_step = {
-        # TODO slightly different from BeyondMimic – check if this works
+        # TODO slightly different from BeyondMimic, check if this works
         "push_robot": (
             events.push_by_setting_velocity,
             {
@@ -193,21 +220,4 @@ class TrackingG1EnvCfg(BaseEnvCfg):
                 "velocity_range": VELOCITY_RANGE,
             },
         )
-    }
-    callbacks_terminate = {
-        "time_out": terminations.time_out,
-        "anchor_pos": (terminations.bad_anchor_pos_z_only, {"threshold": 0.25}),
-        "anchor_ori": (terminations.bad_anchor_ori, {"threshold": 0.8}),
-        "ee_body_pos": (
-            terminations.bad_motion_body_pos_z_only,
-            {
-                "threshold": 0.25,
-                "body_names": [
-                    "left_ankle_roll_link",
-                    "right_ankle_roll_link",
-                    "left_wrist_yaw_link",
-                    "right_wrist_yaw_link",
-                ],
-            },
-        ),
-    }
+    }"""
