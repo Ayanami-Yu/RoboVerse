@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '6'  # TODO debug only, remove this
+
+# FIXME adding the following line will cause GUI to break?
+# os.environ['CUDA_VISIBLE_DEVICES'] = '6'  # TODO debug only, remove this
 
 import random
 

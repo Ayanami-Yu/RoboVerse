@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import MISSING
 
+# import roboverse_pack.tasks.beyondmimic.isaaclab.mdp as mdp
+import isaaclab.envs.mdp as mdp
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
@@ -21,7 +23,10 @@ from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
-import roboverse_pack.tasks.beyondmimic.isaaclab.mdp as mdp
+from roboverse_pack.tasks.beyondmimic.isaaclab.mdp import commands, events
+from roboverse_pack.tasks.beyondmimic.isaaclab.mdp import observations as obs
+from roboverse_pack.tasks.beyondmimic.isaaclab.mdp import rewards as rew
+from roboverse_pack.tasks.beyondmimic.isaaclab.mdp import terminations as done
 
 ##
 # Scene definition
@@ -82,7 +87,7 @@ class MySceneCfg(InteractiveSceneCfg):
 class CommandsCfg:
     """Command specifications for the MDP."""
 
-    motion = mdp.MotionCommandCfg(
+    motion = commands.MotionCommandCfg(
         asset_name="robot",
         resampling_time_range=(1.0e9, 1.0e9),
         debug_vis=True,
@@ -118,10 +123,10 @@ class ObservationsCfg:
         # observation terms (order preserved)
         command = ObsTerm(func=mdp.generated_commands, params={"command_name": "motion"})
         motion_anchor_pos_b = ObsTerm(
-            func=mdp.motion_anchor_pos_b, params={"command_name": "motion"}, noise=Unoise(n_min=-0.25, n_max=0.25)
+            func=obs.motion_anchor_pos_b, params={"command_name": "motion"}, noise=Unoise(n_min=-0.25, n_max=0.25)
         )
         motion_anchor_ori_b = ObsTerm(
-            func=mdp.motion_anchor_ori_b, params={"command_name": "motion"}, noise=Unoise(n_min=-0.05, n_max=0.05)
+            func=obs.motion_anchor_ori_b, params={"command_name": "motion"}, noise=Unoise(n_min=-0.05, n_max=0.05)
         )
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.5, n_max=0.5))
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
@@ -138,10 +143,10 @@ class ObservationsCfg:
         """Observations for privileged group."""
 
         command = ObsTerm(func=mdp.generated_commands, params={"command_name": "motion"})
-        motion_anchor_pos_b = ObsTerm(func=mdp.motion_anchor_pos_b, params={"command_name": "motion"})
-        motion_anchor_ori_b = ObsTerm(func=mdp.motion_anchor_ori_b, params={"command_name": "motion"})
-        body_pos = ObsTerm(func=mdp.robot_body_pos_b, params={"command_name": "motion"})
-        body_ori = ObsTerm(func=mdp.robot_body_ori_b, params={"command_name": "motion"})
+        motion_anchor_pos_b = ObsTerm(func=obs.motion_anchor_pos_b, params={"command_name": "motion"})
+        motion_anchor_ori_b = ObsTerm(func=obs.motion_anchor_ori_b, params={"command_name": "motion"})
+        body_pos = ObsTerm(func=obs.robot_body_pos_b, params={"command_name": "motion"})
+        body_ori = ObsTerm(func=obs.robot_body_ori_b, params={"command_name": "motion"})
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel)
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel)
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
@@ -171,7 +176,7 @@ class EventCfg:
     )
 
     add_joint_default_pos = EventTerm(
-        func=mdp.randomize_joint_default_pos,
+        func=events.randomize_joint_default_pos,
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=[".*"]),
@@ -181,7 +186,7 @@ class EventCfg:
     )
 
     base_com = EventTerm(
-        func=mdp.randomize_rigid_body_com,
+        func=events.randomize_rigid_body_com,
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names="torso_link"),
@@ -203,32 +208,32 @@ class RewardsCfg:
     """Reward terms for the MDP."""
 
     motion_global_anchor_pos = RewTerm(
-        func=mdp.motion_global_anchor_position_error_exp,
+        func=rew.motion_global_anchor_position_error_exp,
         weight=0.5,
         params={"command_name": "motion", "std": 0.3},
     )
     motion_global_anchor_ori = RewTerm(
-        func=mdp.motion_global_anchor_orientation_error_exp,
+        func=rew.motion_global_anchor_orientation_error_exp,
         weight=0.5,
         params={"command_name": "motion", "std": 0.4},
     )
     motion_body_pos = RewTerm(
-        func=mdp.motion_relative_body_position_error_exp,
+        func=rew.motion_relative_body_position_error_exp,
         weight=1.0,
         params={"command_name": "motion", "std": 0.3},
     )
     motion_body_ori = RewTerm(
-        func=mdp.motion_relative_body_orientation_error_exp,
+        func=rew.motion_relative_body_orientation_error_exp,
         weight=1.0,
         params={"command_name": "motion", "std": 0.4},
     )
     motion_body_lin_vel = RewTerm(
-        func=mdp.motion_global_body_linear_velocity_error_exp,
+        func=rew.motion_global_body_linear_velocity_error_exp,
         weight=1.0,
         params={"command_name": "motion", "std": 1.0},
     )
     motion_body_ang_vel = RewTerm(
-        func=mdp.motion_global_body_angular_velocity_error_exp,
+        func=rew.motion_global_body_angular_velocity_error_exp,
         weight=1.0,
         params={"command_name": "motion", "std": 3.14},
     )
@@ -259,15 +264,15 @@ class TerminationsCfg:
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     anchor_pos = DoneTerm(
-        func=mdp.bad_anchor_pos_z_only,
+        func=done.bad_anchor_pos_z_only,
         params={"command_name": "motion", "threshold": 0.25},
     )
     anchor_ori = DoneTerm(
-        func=mdp.bad_anchor_ori,
+        func=done.bad_anchor_ori,
         params={"asset_cfg": SceneEntityCfg("robot"), "command_name": "motion", "threshold": 0.8},
     )
     ee_body_pos = DoneTerm(
-        func=mdp.bad_motion_body_pos_z_only,
+        func=done.bad_motion_body_pos_z_only,
         params={
             "command_name": "motion",
             "threshold": 0.25,

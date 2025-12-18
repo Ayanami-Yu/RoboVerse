@@ -53,7 +53,7 @@ class BaseEnvCfg:
             "reset",
             "pre_step",
             "post_step",
-            "terminate",
+            # "terminate",
             "query",
         ]:
             cb_dict = getattr(self.callbacks, cb_attr)

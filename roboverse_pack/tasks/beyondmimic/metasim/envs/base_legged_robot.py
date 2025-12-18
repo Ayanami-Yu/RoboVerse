@@ -310,8 +310,7 @@ class LeggedRobotTask(RLTaskEnv):
 
         self._post_physics_step(env_states)
 
-        # NOTE for RSL-RL v2.3.0
-        # TODO is this necessary? consider removing this
+        # NOTE for RSL-RL v2.3.0 (needed in env wrapper)
         self.extras["observations"] = self._obs_buf
 
         return (
@@ -403,9 +402,13 @@ class LeggedRobotTask(RLTaskEnv):
 
         return self.reset_time_outs | self.reset_terminated
 
-    def _observation(self, env_states: TensorState) -> tuple[torch.Tensor, torch.Tensor | None]:
+    def _observation(self, env_states: TensorState) -> dict[str, torch.Tensor]:
         """Return a dictionary with keys "policy" and "critic", each corresponding to a tensor."""
         raise NotImplementedError
+
+    def _get_observations(self) -> dict[str, torch.Tensor]:
+        """For compatibility with Isaac Lab native RSL-RL env wrapper."""
+        return self._observation(self.handler.get_states())
 
     def _get_initial_states(self):
         """Return list of per-env initial states derived from config."""
@@ -471,3 +474,24 @@ class LeggedRobotTask(RLTaskEnv):
     # def default_env_states(self) -> TensorState:
     #     """Initial environment states used for resets."""
     #     return self._default_env_states
+
+    # for backward compatibility with RSL-RL env wrapper
+
+    @property
+    def episode_length_buf(self) -> torch.Tensor:
+        """Current episode lengths of each env. Used in time-out computation."""
+        return self._episode_steps
+
+    @episode_length_buf.setter
+    def episode_length_buf(self, value: torch.Tensor):
+        self._episode_steps = value
+
+    @property
+    def max_episode_length(self) -> int:
+        """Maximum episode length in environment steps."""
+        return self.max_episode_steps
+
+    @property
+    def num_actions(self) -> int:
+        """Total dimension of actions."""
+        return self.total_action_dim

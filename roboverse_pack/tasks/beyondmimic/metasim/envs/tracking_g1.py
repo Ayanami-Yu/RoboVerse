@@ -102,7 +102,8 @@ class TrackingG1Task(LeggedRobotTask):
         # return obs_buf["policy"], obs_buf["critic"]
         return obs_buf
 
-    """def _terminated(self, env_states: TensorState | None) -> torch.BoolTensor:
+    """# TODO `_terminated()` is moved to the super class; remove this
+    def _terminated(self, env_states: TensorState | None) -> torch.BoolTensor:
         # Override to record terminated (with time-out excluded) envs for adapting sampling
         self.terminated_buf[:] = False
         self.truncated_buf[:] = False

@@ -60,16 +60,26 @@ class TrackingRslRlVecEnvWrapper(VecEnv):
         self.max_episode_length = self.env.max_episode_length
 
         # obtain dimensions of the environment
-        if hasattr(self.env, "action_manager"):
+        # NOTE this logic has been modified for compatiblity with RoboVerse envs
+        if hasattr(self.env, "num_actions"):
+            self.num_actions = self.env.num_actions
+        elif hasattr(self.env, "action_manager"):
             self.num_actions = self.env.action_manager.total_action_dim
         else:
             self.num_actions = gym.spaces.flatdim(self.env.single_action_space)
-        if hasattr(self.env, "observation_manager"):
+
+        # TODO verify that these are not needed and remove them
+        """if hasattr(self.env, "num_obs"):
+            self.num_obs = self.env.num_obs
+        elif hasattr(self.env, "observation_manager"):
             self.num_obs = self.env.observation_manager.group_obs_dim["policy"][0]
         else:
             self.num_obs = gym.spaces.flatdim(self.env.single_observation_space["policy"])
+
         # -- privileged observations
-        if (
+        if hasattr(self.env, "num_priv_obs"):
+            self.num_privileged_obs = self.env.num_priv_obs
+        elif (
             hasattr(self.env, "observation_manager")
             and "critic" in self.env.observation_manager.group_obs_dim
         ):
@@ -77,7 +87,7 @@ class TrackingRslRlVecEnvWrapper(VecEnv):
         elif hasattr(self.env, "num_states") and "critic" in self.env.single_observation_space:
             self.num_privileged_obs = gym.spaces.flatdim(self.env.single_observation_space["critic"])
         else:
-            self.num_privileged_obs = 0
+            self.num_privileged_obs = 0"""
 
         # modify the action space to the clip range
         self._modify_action_space()
@@ -174,7 +184,7 @@ class TrackingRslRlVecEnvWrapper(VecEnv):
         extras["observations"] = obs_dict
         # move time out information to the extras dict
         # this is only needed for infinite horizon tasks
-        if not self.env.cfg.is_finite_horizon:
+        if not getattr(self.env.cfg, "is_finite_horizon", False):
             extras["time_outs"] = truncated
 
         # return the step information

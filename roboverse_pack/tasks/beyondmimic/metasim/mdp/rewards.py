@@ -89,7 +89,8 @@ def motion_global_body_angular_velocity_error_exp(
 def action_rate_l2(env: LeggedRobotTask, env_states: TensorState) -> torch.Tensor:
     """Penalize the rate of change of the actions using L2 squared kernel."""
     return torch.sum(
-        torch.square(env._action - env.history_buffer["actions"][-1]),
+        # torch.square(env._action - env.history_buffer["actions"][-1]),
+        torch.square(env._action - env._prev_action),
         dim=1,  # NOTE `env.actions` is already in the original order
     )  # [n_envs, n_dims]
 

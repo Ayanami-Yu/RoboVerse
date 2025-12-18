@@ -347,7 +347,7 @@ class MotionCommand:
 
     @property
     def command(self) -> torch.Tensor:
-        """Get the command."""
+        """Get the command. Needed in observations."""
         return torch.cat([self.joint_pos, self.joint_vel], dim=1)
 
     @property
