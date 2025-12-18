@@ -51,7 +51,7 @@ class RewTerm(CfgTerm):
 
 @configclass
 class DoneTerm(CfgTerm):
-    """Configuration for terminal functions."""
+    """Configuration for termination functions."""
 
     time_out: bool = False
 

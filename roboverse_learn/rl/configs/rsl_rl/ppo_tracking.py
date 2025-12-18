@@ -1,4 +1,9 @@
+import os
+import wandb
+import pathlib
 from typing import Literal, Optional
+from loguru import logger as log
+
 from metasim.utils import configclass
 from roboverse_learn.rl.configs.rsl_rl.ppo import RslRlPPOConfig
 from roboverse_learn.rl.configs.rsl_rl.algorithm import RslRlPpoActorCriticCfg, RslRlPpoAlgorithmCfg
@@ -33,8 +38,14 @@ class RslRlPPOTrackingConfig(RslRlPPOConfig):
     # Logging
     use_wandb: bool = True
 
-    # WandB registry for loading motions
+    # WandB registry for loading motions (training)
     registry_name: Optional[str] = None
+
+    # WandB run path for loading model and motions (evaluation)
+    wandb_path: Optional[str] = None
+
+    # Motion file path (gets overridden except when loading from local file)
+    motion_file: Optional[str] = None
 
     # Policy configuration
     policy = RslRlPpoActorCriticCfg(
@@ -64,14 +75,45 @@ class RslRlPPOTrackingConfig(RslRlPPOConfig):
     )
 
     def __post_init__(self) -> None:
+        """`motion_file` will point to an existing motion file path after `__post_init__()`."""
         super().__post_init__()
 
-        if ":" not in self.registry_name:  # Check if the registry name includes alias, if not, append ":latest"
-            self.registry_name += ":latest"
+        if self.registry_name:
+            if ":" not in self.registry_name:  # Check if the registry name includes alias, if not, append ":latest"
+                self.registry_name += ":latest"
 
-        import pathlib
-        import wandb
+            api = wandb.Api()
+            artifact = api.artifact(self.registry_name)
+            self.motion_file = str(pathlib.Path(artifact.download()) / "motion.npz")
 
-        api = wandb.Api()
-        artifact = api.artifact(self.registry_name)
-        self.motion_file = str(pathlib.Path(artifact.download()) / "motion.npz")
+        elif self.wandb_path:
+            if "model" in self.wandb_path:
+                run_path = "/".join(self.wandb_path.split("/")[:-1])
+                # e.g., "org/project/run_id/model_1000.pt" yields "org/project/run_id"
+            else:
+                run_path = self.wandb_path
+
+            wandb_run = wandb.Api().run(run_path)
+            if "model" in self.wandb_path:
+                # use specified model file
+                model_file = self.wandb_path.split("/")[-1]
+            else:
+                # files are formatted as model_xxx.pt, find the largest filename (max iter)
+                files = [file.name for file in wandb_run.files() if "model" in file.name]
+                model_file = max(files, key=lambda x: int(x.split("_")[1].split(".")[0]))
+
+            # prepare log dir to store temporary files
+            log_dir = f"./outputs/{self.robot}/{self.task}/temp"
+            os.makedirs(log_dir, exist_ok=True)
+
+            wandb_file = wandb_run.file(str(model_file))
+            wandb_file.download(log_dir, replace=True)
+            log.info(f"Loading checkpoint from {run_path}/{model_file}")
+            self.checkpoint_path = f"{log_dir}/{model_file}"
+
+            art = next((a for a in wandb_run.used_artifacts() if a.type == "motions"), None)
+            assert art, "No motion artifact found in WandB run"
+            self.motion_file = str(pathlib.Path(art.download()) / "motion.npz")
+
+        else:
+            assert self.motion_file, "Provide local motion file path if not loading from WandB"
