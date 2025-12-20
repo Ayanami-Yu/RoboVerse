@@ -121,4 +121,4 @@ def last_action(env: LeggedRobotTask, env_states: TensorState) -> torch.Tensor:
     # return env.action_manager.action
     # TODO check if this is correct
     # return env.history_buffer["actions"][-1]  # (n_envs, n_dofs)
-    return env._action  # TODO not `env._prev_action`?
+    return env._action

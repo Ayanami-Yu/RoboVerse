@@ -539,6 +539,7 @@ class IsaacsimHandler(BaseSimHandler):
                 # position control
                 robot_inst.set_joint_position_target(joint_targets, joint_ids=joint_ids)
 
+            # FIXME is this redundant since it'll be called later in `scene.write_data_to_sim()` in `_simulate()`?
             robot_inst.write_data_to_sim()
 
     def _simulate(self):

@@ -194,8 +194,8 @@ class MotionCommand:
             return
         self._adaptive_sampling(env_ids)
 
-        root_pos = self.body_pos_w[:, 0].clone()
-        root_ori = self.body_quat_w[:, 0].clone()
+        root_pos = self.body_pos_w[:, 0].clone()  # (n_envs, 3)
+        root_ori = self.body_quat_w[:, 0].clone()  # TODO w first or last
         root_lin_vel = self.body_lin_vel_w[:, 0].clone()
         root_ang_vel = self.body_ang_vel_w[:, 0].clone()
 
@@ -204,7 +204,7 @@ class MotionCommand:
         ranges = torch.tensor(range_list, device=self.device)
         rand_samples = sample_uniform(ranges[:, 0], ranges[:, 1], (len(env_ids), 6), device=self.device)
         root_pos[env_ids] += rand_samples[:, 0:3]
-        orientations_delta = quat_from_euler_xyz(rand_samples[:, 3], rand_samples[:, 4], rand_samples[:, 5])
+        orientations_delta = quat_from_euler_xyz(rand_samples[:, 3], rand_samples[:, 4], rand_samples[:, 5])  # w first
         root_ori[env_ids] = quat_mul(orientations_delta, root_ori[env_ids])
 
         # perturb root velocities
@@ -221,9 +221,12 @@ class MotionCommand:
 
         soft_joint_pos_limits = self.env.soft_dof_pos_limits_original[env_ids]
 
+        # TODO check if there are other components contained in `env_states` that possibly cause command setting incorrect
         joint_pos[env_ids] = torch.clip(
             joint_pos[env_ids], soft_joint_pos_limits[:, :, 0], soft_joint_pos_limits[:, :, 1]
         )
+
+        """# FIXME using `env_states` here leads to incorrect results, possibly because advanced indexing returns a copy which causes original tensors in `env_states` not modified
         env_states.robots[self.env.name].joint_pos[:, self.env.sorted_to_original_joint_indexes][env_ids] = joint_pos[
             env_ids
         ]
@@ -234,7 +237,26 @@ class MotionCommand:
             [root_pos[env_ids], root_ori[env_ids], root_lin_vel[env_ids], root_ang_vel[env_ids]], dim=-1
         )
         # NOTE tensors in `env_states` will be cloned inside `set_states()`
+        self.env.handler.set_states(env_states, env_ids)"""
+
+        env_states.robots[self.env.name].joint_pos[env_ids] = joint_pos[
+            env_ids, self.env.original_to_sorted_joint_indexes
+        ]
+        env_states.robots[self.env.name].joint_vel[env_ids] = joint_vel[
+            env_ids, self.env.original_to_sorted_joint_indexes
+        ]
+        env_states.robots[self.env.name].root_state[env_ids, :] = torch.cat(
+            [root_pos[env_ids], root_ori[env_ids], root_lin_vel[env_ids], root_ang_vel[env_ids]], dim=-1
+        )
         self.env.handler.set_states(env_states, env_ids)
+
+        """# this is what's supposed to happen under the hood (in Isaac Lab)
+        robot_inst = self.env.handler.scene.articulations[self.env.name]
+        robot_inst.write_joint_state_to_sim(joint_pos[env_ids], joint_vel[env_ids], env_ids=env_ids)
+        robot_inst.write_root_state_to_sim(
+            torch.cat([root_pos[env_ids], root_ori[env_ids], root_lin_vel[env_ids], root_ang_vel[env_ids]], dim=-1),
+            env_ids=env_ids,
+        )"""
 
     def _update_command(self, env_states: TensorState):
         # pick new time steps using adaptive sampling for the envs that have reached the end of the motion
@@ -242,8 +264,7 @@ class MotionCommand:
         env_ids = torch.where(self.time_steps >= self.motion.time_step_total)[0]
         self._resample_command(env_ids, env_states)  # resample when motion ends
 
-        # TODO clear metric values?
-
+        env_states = self.env.handler.get_states()
         robot_state = env_states.robots[self.env.name]
 
         # put reference motion at the robot's XY (rotate it so its heading matches the robot's heading) while keeping the motion's height (Z)
@@ -313,7 +334,7 @@ class MotionCommand:
         )
 
     def reset(self, env_ids: Sequence[int] | None = None):
-        """Reset the motion command."""
+        """Reset the motion command (similar to `CommandTerm.reset()` in Isaac Lab)."""
         if env_ids is None:
             env_ids = torch.arange(self.env.num_envs, dtype=torch.int64, device=self.device)
 
@@ -325,10 +346,8 @@ class MotionCommand:
             # reset the metric value
             metric_value[env_ids] = 0.0
 
-        if len(env_ids) != 0:
-            # resample the time left before resampling (will be used by `compute()`)
-            self.time_left[env_ids] = self.time_left[env_ids].uniform_(*self.cfg.resampling_time_range)
-            self._resample_command(env_ids, self.env.handler.get_states())  # TODO is using `get_states()` here correct?
+        # resample the command
+        self._resample(env_ids, self.env.handler.get_states())
 
         return extras
 
@@ -341,9 +360,18 @@ class MotionCommand:
         # resample the command if necessary
         resample_env_ids = (self.time_left <= 0.0).nonzero().flatten()
         if len(resample_env_ids) > 0:
-            self._resample(resample_env_ids)
+            self._resample(resample_env_ids, env_states)
+            env_states = self.handler.get_states()
         # update the command
         self._update_command(env_states)
+
+    def _resample(self, env_ids: Sequence[int], env_states: TensorState):
+        """Resample the command."""
+        if len(env_ids) != 0:
+            # resample the time left before resampling
+            self.time_left[env_ids] = self.time_left[env_ids].uniform_(*self.cfg.resampling_time_range)
+            # resample the command
+            self._resample_command(env_ids, env_states)
 
     @property
     def command(self) -> torch.Tensor:

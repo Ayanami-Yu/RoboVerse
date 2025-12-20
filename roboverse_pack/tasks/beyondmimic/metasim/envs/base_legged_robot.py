@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from copy import deepcopy
 from dataclasses import asdict
-from typing import Any
+from typing import Any, Sequence
 
 import torch
 
@@ -219,7 +219,23 @@ class LeggedRobotTask(RLTaskEnv):
         # NOTE corresponds to action clipping in `RslRlVecEnvWrapper.step()` in Isaac Lab
         return torch.clip(actions, -self.action_clip, self.action_clip) if self.action_clip else actions
 
-    def reset(self, env_ids: torch.Tensor | list[int] | None = None):
+    def reset(self, env_ids: Sequence[int] | None = None):
+        """Reset the specified environments. Only called once when the task class is initialized."""
+        if env_ids is None:
+            env_ids = torch.arange(self.num_envs, dtype=torch.int64, device=self.device)
+
+        # reset state of scene
+        self._reset_idx(env_ids)
+
+        # TODO are these necessary?
+        # update articulation kinematics
+        # self.handler.scene.write_data_to_sim()
+        # self.handler.sim.forward()
+
+        # compute observations
+        self._obs_buf = self._observation(self.handler.get_states())
+
+    def _reset_idx(self, env_ids: torch.Tensor | list[int] | None = None):
         """Reset selected envs (defaults to all)."""
         if env_ids is None:
             env_ids = torch.tensor(list(range(self.num_envs)), device=self.device)
@@ -230,12 +246,15 @@ class LeggedRobotTask(RLTaskEnv):
 
         # reset the internal buffers of the scene elements (actions, sensors, etc.)
         # TODO reset contact sensor
+        # self.handler.scene.reset(env_ids)
 
         # apply events such as randomizations for environments that need a reset
         for _reset_fn, _params in self.reset_callback.values():
             _ = _reset_fn(self, env_ids, **_params)
+
+        # FIXME setting to initial states here is incorrect?
         # self.set_states(states=self.setup_initial_env_states, env_ids=env_ids)
-        self.set_states(states=self._initial_states, env_ids=env_ids)
+        # self.set_states(states=self._initial_states, env_ids=env_ids)
 
         # reset observations
         # for _obs in self.obs_buf_queue:
@@ -263,7 +282,7 @@ class LeggedRobotTask(RLTaskEnv):
         # reset curriculum
 
         # reset commands
-        metrics = self.commands.reset(env_ids=env_ids)  # TODO
+        metrics = self.commands.reset(env_ids=env_ids)
         for metric_name, metric_value in metrics.items():
             self.extras["episode"][f"Metrics_Motion/{metric_name}"] = metric_value
 
@@ -321,12 +340,6 @@ class LeggedRobotTask(RLTaskEnv):
             self.extras,
         )
 
-    def _physics_step(self, actions: torch.Tensor) -> TensorState:
-        """Issue low-level actions and simulate one physics step."""
-        self.handler.set_dof_targets(actions)
-        self.handler.simulate()
-        return self.handler.get_states()
-
     def _post_physics_step(self, env_states: TensorState):
         self._episode_steps += 1  # step in current episode (per env)
         self.common_step_counter += 1  # total step (common for all envs)
@@ -338,15 +351,16 @@ class LeggedRobotTask(RLTaskEnv):
         # reset envs and MDP
         reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         if len(reset_env_ids) > 0:
-            self.reset(env_ids=reset_env_ids)
-            # TODO is `write_data_to_sim()` necessary?
+            self._reset_idx(env_ids=reset_env_ids)
+
+            # TODO are these necessary?
             # update articulation kinematics
-            # self.scene.write_data_to_sim() -> articulation.write_data_to_sim() -> articulation._apply_actuator_model() -> root_physx_view.set_dof_position_targets()
-            # self.sim.forward()
-            env_states = self.handler.get_states()  # TODO check after adding this
+            # self.handler.scene.write_data_to_sim()
+            # self.handler.sim.forward()
 
         # update commands
-        self.commands.compute(env_states)
+        self.commands.compute(self.handler.get_states())
+        env_states = self.handler.get_states()
 
         # step interval events
         for _step_fn, _params in self.post_physics_step_callback.values():
@@ -359,7 +373,7 @@ class LeggedRobotTask(RLTaskEnv):
         # if priv_single is not None and self.priv_obs_buf_queue.maxlen > 0:
         #     self.priv_obs_buf_queue.append(priv_single)
 
-        self._obs_buf = self._observation(env_states)
+        self._obs_buf = self._observation(self.handler.get_states())
 
         # copy to the history buffer
         # TODO verify whether history length of 1 equals not using history
@@ -370,6 +384,13 @@ class LeggedRobotTask(RLTaskEnv):
         #         history.append(getattr(env_states.robots[self.name], key).clone())
         #     else:
         #         raise ValueError(f"History buffer key {key} not found in task or robot states.")
+
+    def _physics_step(self, actions: torch.Tensor) -> TensorState:
+        """Issue low-level actions and simulate one physics step."""
+        # FIXME both `set_dof_targets()` and `simulate()` call `articulation.write_data_to_sim()`
+        self.handler.set_dof_targets(actions)
+        self.handler.simulate()
+        return self.handler.get_states()
 
     def _reward(self, env_states: TensorState):
         rew_buf = torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
