@@ -4,7 +4,9 @@ from dataclasses import MISSING
 from typing import Callable
 
 from metasim.utils import configclass
+from roboverse_pack.tasks.beyondmimic.metasim.configs.cfg_randomizers import MassRandomizer, MaterialRandomizer
 from roboverse_pack.tasks.beyondmimic.metasim.mdp import (
+    events,
     observations,
     rewards,
     terminations,
@@ -187,7 +189,7 @@ class TrackingG1EnvCfg(BaseEnvCfg):
 
     # TODO fully align domain randomization with BeyondMimic
     # TODO uncomment DR after debugging evaluation pipeline
-    """callbacks_setup = {
+    callbacks_setup = {
         "material_randomizer": MaterialRandomizer(
             obj_name="g1_tracking",
             static_friction_range=(0.3, 1.6),
@@ -220,4 +222,4 @@ class TrackingG1EnvCfg(BaseEnvCfg):
                 "velocity_range": VELOCITY_RANGE,
             },
         )
-    }"""
+    }

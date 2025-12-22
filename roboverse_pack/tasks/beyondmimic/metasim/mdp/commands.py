@@ -231,10 +231,10 @@ class MotionCommand:
         )
 
         env_states.robots[self.env.name].joint_pos[env_ids] = joint_pos[
-            env_ids, self.env.original_to_sorted_joint_indexes
+            env_ids.unsqueeze(1), self.env.original_to_sorted_joint_indexes
         ]
         env_states.robots[self.env.name].joint_vel[env_ids] = joint_vel[
-            env_ids, self.env.original_to_sorted_joint_indexes
+            env_ids.unsqueeze(1), self.env.original_to_sorted_joint_indexes
         ]
         env_states.robots[self.env.name].root_state[env_ids, :] = torch.cat(
             [root_pos[env_ids], root_ori[env_ids], root_lin_vel[env_ids], root_ang_vel[env_ids]], dim=-1
