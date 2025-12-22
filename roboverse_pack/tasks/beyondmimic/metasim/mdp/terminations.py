@@ -45,5 +45,7 @@ def bad_motion_body_pos_z_only(
     """Bad motion body position z-only."""
     body_state = env_states.robots[env.name].body_state[:, env.commands.body_indexes, :]
     body_indexes = get_body_indexes(env.commands, body_names)
-    error = torch.abs(env.commands.body_pos_relative_w[:, body_indexes, 2] - body_state[:, body_indexes, 2])
+    error = torch.abs(
+        env.commands.body_pos_relative_w[:, body_indexes, 2] - body_state[:, body_indexes, 2]
+    )  # FIXME `body_pos_relative_w` has not been updated after resampling command for the first time (in env wrapper's `reset()`)
     return torch.any(error > threshold, dim=-1)

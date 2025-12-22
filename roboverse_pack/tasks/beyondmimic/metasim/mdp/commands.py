@@ -194,6 +194,10 @@ class MotionCommand:
             return
         self._adaptive_sampling(env_ids)
 
+        # TODO debug only, remove this
+        # import omni.log
+        # omni.log.info("Calling `_resample_command()`")
+
         root_pos = self.body_pos_w[:, 0].clone()  # (n_envs, 3)
         root_ori = self.body_quat_w[:, 0].clone()  # TODO w first or last
         root_lin_vel = self.body_lin_vel_w[:, 0].clone()
@@ -226,19 +230,6 @@ class MotionCommand:
             joint_pos[env_ids], soft_joint_pos_limits[:, :, 0], soft_joint_pos_limits[:, :, 1]
         )
 
-        """# FIXME using `env_states` here leads to incorrect results, possibly because advanced indexing returns a copy which causes original tensors in `env_states` not modified
-        env_states.robots[self.env.name].joint_pos[:, self.env.sorted_to_original_joint_indexes][env_ids] = joint_pos[
-            env_ids
-        ]
-        env_states.robots[self.env.name].joint_vel[:, self.env.sorted_to_original_joint_indexes][env_ids] = joint_vel[
-            env_ids
-        ]
-        env_states.robots[self.env.name].root_state[env_ids, :] = torch.cat(
-            [root_pos[env_ids], root_ori[env_ids], root_lin_vel[env_ids], root_ang_vel[env_ids]], dim=-1
-        )
-        # NOTE tensors in `env_states` will be cloned inside `set_states()`
-        self.env.handler.set_states(env_states, env_ids)"""
-
         env_states.robots[self.env.name].joint_pos[env_ids] = joint_pos[
             env_ids, self.env.original_to_sorted_joint_indexes
         ]
@@ -249,14 +240,6 @@ class MotionCommand:
             [root_pos[env_ids], root_ori[env_ids], root_lin_vel[env_ids], root_ang_vel[env_ids]], dim=-1
         )
         self.env.handler.set_states(env_states, env_ids)
-
-        """# this is what's supposed to happen under the hood (in Isaac Lab)
-        robot_inst = self.env.handler.scene.articulations[self.env.name]
-        robot_inst.write_joint_state_to_sim(joint_pos[env_ids], joint_vel[env_ids], env_ids=env_ids)
-        robot_inst.write_root_state_to_sim(
-            torch.cat([root_pos[env_ids], root_ori[env_ids], root_lin_vel[env_ids], root_ang_vel[env_ids]], dim=-1),
-            env_ids=env_ids,
-        )"""
 
     def _update_command(self, env_states: TensorState):
         # pick new time steps using adaptive sampling for the envs that have reached the end of the motion
