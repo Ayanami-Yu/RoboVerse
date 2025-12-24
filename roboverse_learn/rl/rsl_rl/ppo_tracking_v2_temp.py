@@ -18,10 +18,12 @@ from rsl_rl.runners import OnPolicyRunner
 
 rootutils.setup_root(__file__, pythonpath=True)
 
-# NOTE this script is for RSL-RL v2.3.0
+# NOTE this is a temporary script for testing motion tracking implementation using RSL-RL v3.1.0 (Isaac Lab version env wrapper)
 
 from roboverse_learn.rl.configs.rsl_rl.ppo_tracking import RslRlPPOTrackingConfig
-from roboverse_learn.rl.rsl_rl.env_wrapper_tracking_v1 import TrackingRslRlVecEnvWrapperV1
+# from roboverse_learn.rl.rsl_rl.env_wrapper import RslRlEnvWrapper
+
+from roboverse_learn.rl.rsl_rl.env_wrapper_tracking_v2 import TrackingRslRlVecEnvWrapperV2
 from metasim.task.registry import get_task_class
 
 
@@ -49,7 +51,8 @@ def make_roboverse_env(args: RslRlPPOTrackingConfig):
 
     # Pass env_cfg to task constructor
     # env = task_cls(scenario=scenario, device=device)
-    # NOTE pass `args` into init because task class requires motion file path
+    # TODO unify whether or not reset in the env wrapper
+    # env = task_cls(scenario=scenario, args=args, device=device, reset_in_env_wrapper=False)  # FIXME `reset_in_env_wrapper` is a temporary workaround
     env = task_cls(scenario=scenario, args=args, device=device)
     return env
 
@@ -78,7 +81,7 @@ def train(args: RslRlPPOTrackingConfig):
         )
         # use artifact for training
         if args.registry_name:
-            wandb.run.use_artifact(args.registry_name)
+            wandb.run.use_artifact(args.registry_name)  # TODO check if this is correct
 
     # Create environment and wrapper
     print(f"Creating environment: {args.task} with {args.num_envs} environments")
@@ -88,7 +91,9 @@ def train(args: RslRlPPOTrackingConfig):
     train_cfg = args.train_cfg
 
     # Create environment wrapper
-    env_wrapper = TrackingRslRlVecEnvWrapperV1(env)
+    # TODO unify whether or not to pass in `train_cfg`
+    # env_wrapper = RslRlEnvWrapper(env, train_cfg=train_cfg)
+    env_wrapper = TrackingRslRlVecEnvWrapperV2(env)
 
     runner = OnPolicyRunner(
         env=env_wrapper,

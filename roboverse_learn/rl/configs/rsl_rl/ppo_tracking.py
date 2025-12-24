@@ -31,7 +31,7 @@ class RslRlPPOTrackingConfig(RslRlPPOConfig):
     wandb_project: str = "rsl_rl_ppo_tracking"
 
     # Environment / device
-    task = "beyondmimic.tracking.isaaclab"
+    task = "motion-tracking-isaaclab"
     robot = "g1_tracking"  # unused
     sim: SimBackend = "isaacsim"
 

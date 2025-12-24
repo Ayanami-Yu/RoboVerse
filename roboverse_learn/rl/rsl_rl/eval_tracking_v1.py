@@ -25,7 +25,7 @@ rootutils.setup_root(__file__, pythonpath=True)
 # NOTE this script is for RSL-RL v2.3.0
 
 from roboverse_learn.rl.configs.rsl_rl.ppo_tracking import RslRlPPOTrackingConfig
-from roboverse_learn.rl.rsl_rl.env_wrapper_tracking import TrackingRslRlVecEnvWrapper
+from roboverse_learn.rl.rsl_rl.env_wrapper_tracking_v1 import TrackingRslRlVecEnvWrapperV1
 from metasim.task.registry import get_task_class
 
 
@@ -121,7 +121,7 @@ def evaluate(args: RslRlPPOTrackingConfig):
 
     # Create environment wrapper
     # wrapped_env = TrackingRslRlVecEnvWrapper(env, train_cfg=args.train_cfg)
-    env_wrapper = TrackingRslRlVecEnvWrapper(env)
+    env_wrapper = TrackingRslRlVecEnvWrapperV1(env)
 
     # Get observations from environment (needed for resolve_obs_groups)
     # from rsl_rl.utils import resolve_obs_groups

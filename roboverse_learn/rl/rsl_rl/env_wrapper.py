@@ -36,6 +36,12 @@ class RslRlEnvWrapper:
         # Merge info into extras
         extras = {**getattr(self.env, 'extras', {}), **info}
 
+        # move time out information to the extras dict
+        # this is only needed for infinite horizon tasks
+        # FIXME is the lack of this the reason why mean reward is not high enough?
+        if not getattr(self.env.cfg, "is_finite_horizon", False):
+            extras["time_outs"] = truncated
+
         # Return RSL-RL format with TensorDict observations
         return self.obs_buf, rewards, dones, extras
 

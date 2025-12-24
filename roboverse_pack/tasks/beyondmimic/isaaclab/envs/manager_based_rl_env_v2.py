@@ -87,7 +87,7 @@ class ManagerBasedRLEnvV2(ManagerBasedEnvV2, gym.Env):  # TODO check removing `g
         # re-import the modules after `AppLauncher` is instantiated
         from isaacsim.core.version import get_version
 
-        import roboverse_pack.tasks.beyondmimic.isaaclab.configs.flat_env_cfg as flat_env_cfg
+        # import roboverse_pack.tasks.beyondmimic.isaaclab.configs.flat_env_cfg as flat_env_cfg
 
         # whether the environment is a vectorized environment
         self.is_vector_env: ClassVar[bool] = True
@@ -103,7 +103,8 @@ class ManagerBasedRLEnvV2(ManagerBasedEnvV2, gym.Env):  # TODO check removing `g
 
         # instantiate environment config
         # NOTE robot (`ArticulationCfg`) is included in `G1FlatEnvCfg` so the CLI arg `robot` will be ignored
-        cfg = flat_env_cfg.G1FlatEnvCfg()
+        # cfg = flat_env_cfg.G1FlatEnvCfg()
+        cfg = self._init_cfg()
         cfg.scene.num_envs = scenario.num_envs
         cfg.seed = args.train_cfg["seed"]
         cfg.sim.device = args.device if args.device else cfg.sim.device
@@ -125,6 +126,11 @@ class ManagerBasedRLEnvV2(ManagerBasedEnvV2, gym.Env):  # TODO check removing `g
             self.reset()
 
         log.info("[INFO]: Completed setting up the environment...")
+
+    def _init_cfg(self):
+        import roboverse_pack.tasks.beyondmimic.isaaclab.configs.flat_env_cfg as flat_env_cfg
+
+        return flat_env_cfg.G1FlatEnvCfg()
 
     def _launch(self, headless: bool = False):
         from isaaclab.app import AppLauncher
@@ -480,3 +486,13 @@ class ManagerBasedRLEnvV2(ManagerBasedEnvV2, gym.Env):  # TODO check removing `g
 
         # reset the episode length buffer
         self.episode_length_buf[env_ids] = 0
+
+
+@register_task("motion-tracking-isaaclab-v2-deploy")
+class ManagerBasedRLEnvV2Deploy(ManagerBasedRLEnvV2, gym.Env):
+    """Task class for training motion tracker for deployment. The actuators are delayed, and the policy's observations `motion_anchor_pos_b` and `base_lin_vel` are removed."""
+
+    def _init_cfg(self):
+        import roboverse_pack.tasks.beyondmimic.isaaclab.configs.flat_env_cfg as flat_env_cfg
+
+        return flat_env_cfg.G1FlatEnvCfgDeploy()

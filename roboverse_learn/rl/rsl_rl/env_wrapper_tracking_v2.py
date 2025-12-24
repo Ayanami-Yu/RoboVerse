@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 import gymnasium as gym
 import torch
+from tensordict import TensorDict
 
 from rsl_rl.env import VecEnv
 
@@ -15,20 +16,13 @@ if TYPE_CHECKING:
     from isaaclab.envs import DirectRLEnv, ManagerBasedRLEnv
 
 
-# NOTE this wrapper works with Isaac Lab v2.1.0 and RSL-RL v2.3.0
+# NOTE this wrapper works with Isaac Lab v2.3.0 and RSL-RL v3.1.0
 
 
-class TrackingRslRlVecEnvWrapper(VecEnv):
-    """Wraps around Isaac Lab environment for RSL-RL library
-
-    To use asymmetric actor-critic, the environment instance must have the attributes :attr:`num_privileged_obs` (int).
-    This is used by the learning agent to allocate buffers in the trajectory memory. Additionally, the returned
-    observations should have the key "critic" which corresponds to the privileged observations. Since this is
-    optional for some environments, the wrapper checks if these attributes exist. If they don't then the wrapper
-    defaults to zero as number of privileged observations.
+class TrackingRslRlVecEnvWrapperV2(VecEnv):
+    """Wraps around Isaac Lab environment for the RSL-RL library
 
     .. caution::
-
         This class must be the last wrapper in the wrapper chain. This is because the wrapper does not follow
         the :class:`gym.Wrapper` interface. Any subsequent wrappers will need to be modified to work with this
         wrapper.
@@ -136,14 +130,6 @@ class TrackingRslRlVecEnvWrapper(VecEnv):
     Properties
     """
 
-    def get_observations(self) -> tuple[torch.Tensor, dict]:
-        """Returns the current observations of the environment."""
-        if hasattr(self.env, "observation_manager"):
-            obs_dict = self.env.observation_manager.compute()
-        else:
-            obs_dict = self.env._get_observations()
-        return obs_dict["policy"], {"observations": obs_dict}
-
     @property
     def episode_length_buf(self) -> torch.Tensor:
         """The episode length buffer."""
@@ -167,11 +153,22 @@ class TrackingRslRlVecEnvWrapper(VecEnv):
 
     def reset(self) -> tuple[torch.Tensor, dict]:  # noqa: D102
         # reset the environment
-        obs_dict, _ = self.env.reset()
+        # obs_dict, _ = self.env.reset()
+        obs_dict, extras = self.env.reset()
         # return observations
-        return obs_dict["policy"], {"observations": obs_dict}
+        # return obs_dict["policy"], {"observations": obs_dict}
+        return TensorDict(obs_dict, batch_size=[self.num_envs]), extras
 
-    def step(self, actions: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict]:
+    def get_observations(self) -> TensorDict: # tuple[torch.Tensor, dict]:
+        """Returns the current observations of the environment."""
+        if hasattr(self.env, "observation_manager"):
+            obs_dict = self.env.observation_manager.compute()
+        else:
+            obs_dict = self.env._get_observations()
+        # return obs_dict["policy"], {"observations": obs_dict}
+        return TensorDict(obs_dict, batch_size=[self.num_envs])
+
+    def step(self, actions: torch.Tensor) -> tuple[TensorDict, torch.Tensor, torch.Tensor, dict]: # tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict]:
         # clip actions
         if self.clip_actions is not None:
             actions = torch.clamp(actions, -self.clip_actions, self.clip_actions)
@@ -180,15 +177,16 @@ class TrackingRslRlVecEnvWrapper(VecEnv):
         # compute dones for compatibility with RSL-RL
         dones = (terminated | truncated).to(dtype=torch.long)
         # move extra observations to the extras dict
-        obs = obs_dict["policy"]
-        extras["observations"] = obs_dict
+        # obs = obs_dict["policy"]
+        # extras["observations"] = obs_dict
         # move time out information to the extras dict
         # this is only needed for infinite horizon tasks
         if not getattr(self.env.cfg, "is_finite_horizon", False):
             extras["time_outs"] = truncated
 
         # return the step information
-        return obs, rew, dones, extras
+        # return obs, rew, dones, extras
+        return TensorDict(obs_dict, batch_size=[self.num_envs]), rew, dones, extras
 
     def close(self):  # noqa: D102
         return self.env.close()

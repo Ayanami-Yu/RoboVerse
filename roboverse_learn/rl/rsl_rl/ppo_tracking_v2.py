@@ -22,6 +22,8 @@ rootutils.setup_root(__file__, pythonpath=True)
 
 from roboverse_learn.rl.configs.rsl_rl.ppo_tracking import RslRlPPOTrackingConfig
 from roboverse_learn.rl.rsl_rl.env_wrapper import RslRlEnvWrapper
+
+# from roboverse_learn.rl.rsl_rl.env_wrapper_tracking_v2 import TrackingRslRlVecEnvWrapperV2
 from metasim.task.registry import get_task_class
 
 
@@ -49,7 +51,9 @@ def make_roboverse_env(args: RslRlPPOTrackingConfig):
 
     # Pass env_cfg to task constructor
     # env = task_cls(scenario=scenario, device=device)
+    # TODO unify whether or not reset in the env wrapper
     env = task_cls(scenario=scenario, args=args, device=device, reset_in_env_wrapper=False)  # FIXME `reset_in_env_wrapper` is a temporary workaround
+    # env = task_cls(scenario=scenario, args=args, device=device)
     return env
 
 
@@ -87,7 +91,9 @@ def train(args: RslRlPPOTrackingConfig):
     train_cfg = args.train_cfg
 
     # Create environment wrapper
+    # TODO unify whether or not to pass in `train_cfg`
     env_wrapper = RslRlEnvWrapper(env, train_cfg=train_cfg)
+    # env_wrapper = TrackingRslRlVecEnvWrapperV2(env)
 
     runner = OnPolicyRunner(
         env=env_wrapper,
