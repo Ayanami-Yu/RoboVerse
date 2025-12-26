@@ -104,3 +104,10 @@ id_rsa*
 
 # for test cache
 .pytest_cache/
+
+# temporary, delete them when the project is finished
+nohup.out
+references/
+.cursor/
+artifacts/
+nohup/
