@@ -20,10 +20,6 @@ from .base_legged_robot import LeggedRobotTask
 class TrackingG1Task(LeggedRobotTask):
     """Registered BeyondMimic motion tracking task."""
 
-    # env_cfg_cls = TrackingG1EnvCfg
-    # train_cfg_cls = TrackingG1RslRlTrainCfg
-    # task_name = "tracking_g1"
-
     scenario = ScenarioCfg(
         robots=["g1_tracking"],
         objects=[],
@@ -33,17 +29,13 @@ class TrackingG1Task(LeggedRobotTask):
         headless=True,
         env_spacing=2.5,
         decimation=1,  # NOTE task-level decimation is defined by `self.cfg.decimation`
-        sim_params=SimParamCfg(  # TODO why this is not even the default values of `PhysxCfg` in Isaac Lab?
+        sim_params=SimParamCfg(
             dt=0.005,
             substeps=1,
             num_threads=10,
             solver_type=1,
-            # num_position_iterations=4,
             num_position_iterations=255,
-            # num_velocity_iterations=0,
             num_velocity_iterations=255,
-            # contact_offset=0.01,  # not used?
-            # rest_offset=0.0,  # not used?
             bounce_threshold_velocity=0.5,
             max_depenetration_velocity=1.0,
             default_buffer_size_multiplier=5,
@@ -99,20 +91,4 @@ class TrackingG1Task(LeggedRobotTask):
         for group_name in ["policy", "critic"]:
             obs_buf[group_name] = self._compute_observation_group(env_states, group_name)
 
-        # return obs_buf["policy"], obs_buf["critic"]
         return obs_buf
-
-    """# TODO `_terminated()` is moved to the super class; remove this
-    def _terminated(self, env_states: TensorState | None) -> torch.BoolTensor:
-        # Override to record terminated (with time-out excluded) envs for adapting sampling
-        self.terminated_buf[:] = False
-        self.truncated_buf[:] = False
-        for _key in self.terminate_callback.keys():
-            _func, _params = self.terminate_callback[_key]
-            _flag = (_func(self, env_states, **_params)).detach().clone().to(torch.bool)
-            if _key == "time_out":
-                self.truncated_buf = torch.logical_or(self.truncated_buf, _flag)
-            else:
-                self.terminated_buf = torch.logical_or(self.terminated_buf, _flag)
-            self.episode_not_terminated[_key] += _flag.to(torch.float)
-        return torch.logical_or(self.terminated_buf, self.truncated_buf)"""

@@ -9,12 +9,12 @@ from isaaclab.envs.mdp.events import _randomize_prop_by_op
 from isaaclab.managers import SceneEntityCfg
 
 if TYPE_CHECKING:
-    from roboverse_pack.tasks.beyondmimic.isaaclab.manager_based_rl_env import ManagerBasedRLEnv
+    from roboverse_pack.tasks.beyondmimic.isaaclab.envs.tracking_rl_env import TrackingRLEnv
 
 
 # NOTE events are not used in evaluation
 def randomize_joint_default_pos(
-    env: ManagerBasedRLEnv,
+    env: TrackingRLEnv,
     env_ids: torch.Tensor | None,
     asset_cfg: SceneEntityCfg,
     pos_distribution_params: tuple[float, float] | None = None,
@@ -54,7 +54,7 @@ def randomize_joint_default_pos(
 
 
 def randomize_rigid_body_com(
-    env: ManagerBasedRLEnv,
+    env: TrackingRLEnv,
     env_ids: torch.Tensor | None,
     com_range: dict[str, tuple[float, float]],
     asset_cfg: SceneEntityCfg,

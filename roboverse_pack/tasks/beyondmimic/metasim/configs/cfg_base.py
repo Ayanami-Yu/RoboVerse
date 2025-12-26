@@ -14,7 +14,6 @@ class CallbacksCfg:
     reset: dict = {}
     pre_step: dict = {}
     post_step: dict = {}
-    # terminate: dict = {}  # TODO deprecated, remove this
     query: dict = {}
 
 
@@ -31,7 +30,6 @@ class BaseEnvCfg:
     callbacks_reset: dict[str, tuple[Callable, dict] | Callable] = {}
     callbacks_pre_step: dict[str, tuple[Callable, dict] | Callable] = {}
     callbacks_post_step: dict[str, tuple[Callable, dict] | Callable] = {}
-    # callbacks_terminate: dict[str, tuple[Callable, dict] | Callable] = MISSING
     callbacks_query: dict[str, tuple[Callable, dict] | Callable] = MISSING
 
     def __post_init__(self):
@@ -41,7 +39,6 @@ class BaseEnvCfg:
 
         self.callbacks = CallbacksCfg()
         self.callbacks.query = _normalize(self.callbacks_query)
-        # self.callbacks.terminate = _normalize(self.callbacks_terminate)
         self.callbacks.setup = _normalize(self.callbacks_setup)
         self.callbacks.reset = _normalize(self.callbacks_reset)
         self.callbacks.pre_step = _normalize(self.callbacks_pre_step)

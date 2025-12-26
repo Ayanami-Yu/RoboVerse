@@ -8,8 +8,7 @@ from isaaclab.sensors import ContactSensor
 from isaaclab.utils.math import quat_error_magnitude
 
 if TYPE_CHECKING:
-    from roboverse_pack.tasks.beyondmimic.isaaclab.manager_based_rl_env import ManagerBasedRLEnv
-
+    from roboverse_pack.tasks.beyondmimic.isaaclab.envs.tracking_rl_env import TrackingRLEnv
     from roboverse_pack.tasks.beyondmimic.isaaclab.mdp.commands import MotionCommand
 
 
@@ -17,9 +16,7 @@ def _get_body_indexes(command: MotionCommand, body_names: list[str] | None) -> l
     return [i for i, name in enumerate(command.cfg.body_names) if (body_names is None) or (name in body_names)]
 
 
-def motion_global_anchor_position_error_exp(
-    env: ManagerBasedRLEnv, command_name: str, std: float
-) -> torch.Tensor:  # used
+def motion_global_anchor_position_error_exp(env: TrackingRLEnv, command_name: str, std: float) -> torch.Tensor:  # used
     """Distance between target and actual anchor position."""
     command: MotionCommand = env.command_manager.get_term(command_name)
     error = torch.sum(torch.square(command.anchor_pos_w - command.robot_anchor_pos_w), dim=-1)
@@ -27,7 +24,7 @@ def motion_global_anchor_position_error_exp(
 
 
 def motion_global_anchor_orientation_error_exp(
-    env: ManagerBasedRLEnv, command_name: str, std: float
+    env: TrackingRLEnv, command_name: str, std: float
 ) -> torch.Tensor:  # used
     """Distance between target and actual anchor orientation."""
     command: MotionCommand = env.command_manager.get_term(command_name)
@@ -36,7 +33,7 @@ def motion_global_anchor_orientation_error_exp(
 
 
 def motion_relative_body_position_error_exp(
-    env: ManagerBasedRLEnv, command_name: str, std: float, body_names: list[str] | None = None
+    env: TrackingRLEnv, command_name: str, std: float, body_names: list[str] | None = None
 ) -> torch.Tensor:  # used
     """Distance between target and actual body position."""
     command: MotionCommand = env.command_manager.get_term(command_name)
@@ -48,7 +45,7 @@ def motion_relative_body_position_error_exp(
 
 
 def motion_relative_body_orientation_error_exp(
-    env: ManagerBasedRLEnv, command_name: str, std: float, body_names: list[str] | None = None
+    env: TrackingRLEnv, command_name: str, std: float, body_names: list[str] | None = None
 ) -> torch.Tensor:  # used
     """Distance between target and actual body orientation."""
     command: MotionCommand = env.command_manager.get_term(command_name)
@@ -61,7 +58,7 @@ def motion_relative_body_orientation_error_exp(
 
 
 def motion_global_body_linear_velocity_error_exp(
-    env: ManagerBasedRLEnv, command_name: str, std: float, body_names: list[str] | None = None
+    env: TrackingRLEnv, command_name: str, std: float, body_names: list[str] | None = None
 ) -> torch.Tensor:  # used
     """Linear velocity tracking error."""
     command: MotionCommand = env.command_manager.get_term(command_name)
@@ -73,7 +70,7 @@ def motion_global_body_linear_velocity_error_exp(
 
 
 def motion_global_body_angular_velocity_error_exp(
-    env: ManagerBasedRLEnv, command_name: str, std: float, body_names: list[str] | None = None
+    env: TrackingRLEnv, command_name: str, std: float, body_names: list[str] | None = None
 ) -> torch.Tensor:  # used
     """Distance between target and actual body linear velocity."""
     command: MotionCommand = env.command_manager.get_term(command_name)
@@ -84,7 +81,7 @@ def motion_global_body_angular_velocity_error_exp(
     return torch.exp(-error.mean(-1) / std**2)
 
 
-def feet_contact_time(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, threshold: float) -> torch.Tensor:  # unused
+def feet_contact_time(env: TrackingRLEnv, sensor_cfg: SceneEntityCfg, threshold: float) -> torch.Tensor:  # unused
     """Time spent in contact with the ground."""
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
     first_air = contact_sensor.compute_first_air(env.step_dt, env.physics_dt)[:, sensor_cfg.body_ids]

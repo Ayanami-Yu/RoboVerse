@@ -1,6 +1,5 @@
 from isaaclab.utils import configclass
 
-# from roboverse_pack.tasks.beyondmimic.isaaclab.configs.rsl_rl_ppo_cfg import LOW_FREQ_SCALE
 from roboverse_pack.tasks.beyondmimic.isaaclab.configs.tracking_env_cfg import TrackingEnvCfg
 from roboverse_pack.tasks.beyondmimic.isaaclab.robots.g1 import G1_ACTION_SCALE, G1_CYLINDER_CFG
 from roboverse_pack.tasks.beyondmimic.isaaclab.robots.g1_delayed import G1_DELAYED_CYLINDER_CFG
@@ -42,23 +41,3 @@ class G1FlatEnvCfgDeploy(G1FlatEnvCfg):
         self.scene.robot = G1_DELAYED_CYLINDER_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         delattr(self.observations.policy, "base_lin_vel")
         delattr(self.observations.policy, "motion_anchor_pos_b")
-
-
-"""@configclass
-class G1FlatWoStateEstimationEnvCfg(G1FlatEnvCfg):
-    # Configuration for the G1 flat environment without state estimation.
-
-    def __post_init__(self):
-        super().__post_init__()
-        self.observations.policy.motion_anchor_pos_b = None
-        self.observations.policy.base_lin_vel = None"""
-
-
-"""@configclass
-class G1FlatLowFreqEnvCfg(G1FlatEnvCfg):
-    # Configuration for the G1 flat environment with low frequency.
-
-    def __post_init__(self):
-        super().__post_init__()
-        self.decimation = round(self.decimation / LOW_FREQ_SCALE)
-        self.rewards.action_rate_l2.weight *= LOW_FREQ_SCALE"""

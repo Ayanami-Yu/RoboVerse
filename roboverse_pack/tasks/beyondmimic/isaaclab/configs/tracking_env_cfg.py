@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import MISSING
 
-# import roboverse_pack.tasks.beyondmimic.isaaclab.mdp as mdp
 import isaaclab.envs.mdp as mdp
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg

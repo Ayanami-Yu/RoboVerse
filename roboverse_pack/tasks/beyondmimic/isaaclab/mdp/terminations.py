@@ -10,28 +10,25 @@ from isaaclab.managers import SceneEntityCfg
 from roboverse_pack.tasks.beyondmimic.isaaclab.mdp.rewards import _get_body_indexes
 
 if TYPE_CHECKING:
-    from roboverse_pack.tasks.beyondmimic.isaaclab.manager_based_rl_env import ManagerBasedRLEnv
-
+    from roboverse_pack.tasks.beyondmimic.isaaclab.envs.tracking_rl_env import TrackingRLEnv
     from roboverse_pack.tasks.beyondmimic.isaaclab.mdp.commands import MotionCommand
 
 
 # unused
-def bad_anchor_pos(env: ManagerBasedRLEnv, command_name: str, threshold: float) -> torch.Tensor:
+def bad_anchor_pos(env: TrackingRLEnv, command_name: str, threshold: float) -> torch.Tensor:
     """Distance between target and actual anchor position."""
     command: MotionCommand = env.command_manager.get_term(command_name)
     return torch.norm(command.anchor_pos_w - command.robot_anchor_pos_w, dim=1) > threshold
 
 
 # `anchor_pos_w` is of shape [n_envs, 3] and -1 retrieves the Z coordinate
-def bad_anchor_pos_z_only(env: ManagerBasedRLEnv, command_name: str, threshold: float) -> torch.Tensor:
+def bad_anchor_pos_z_only(env: TrackingRLEnv, command_name: str, threshold: float) -> torch.Tensor:
     """Distance between target and actual anchor position in the Z direction."""
     command: MotionCommand = env.command_manager.get_term(command_name)
     return torch.abs(command.anchor_pos_w[:, -1] - command.robot_anchor_pos_w[:, -1]) > threshold
 
 
-def bad_anchor_ori(
-    env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, command_name: str, threshold: float
-) -> torch.Tensor:
+def bad_anchor_ori(env: TrackingRLEnv, asset_cfg: SceneEntityCfg, command_name: str, threshold: float) -> torch.Tensor:
     """Distance between target and actual anchor orientation."""
     asset: RigidObject | Articulation = env.scene[asset_cfg.name]
 
@@ -49,7 +46,7 @@ def bad_anchor_ori(
 
 # unused
 def bad_motion_body_pos(
-    env: ManagerBasedRLEnv, command_name: str, threshold: float, body_names: list[str] | None = None
+    env: TrackingRLEnv, command_name: str, threshold: float, body_names: list[str] | None = None
 ) -> torch.Tensor:
     """Distance between target and actual body position."""
     command: MotionCommand = env.command_manager.get_term(command_name)
@@ -60,7 +57,7 @@ def bad_motion_body_pos(
 
 
 def bad_motion_body_pos_z_only(
-    env: ManagerBasedRLEnv, command_name: str, threshold: float, body_names: list[str] | None = None
+    env: TrackingRLEnv, command_name: str, threshold: float, body_names: list[str] | None = None
 ) -> torch.Tensor:
     """Distance between target and actual body position in the Z direction."""
     command: MotionCommand = env.command_manager.get_term(command_name)

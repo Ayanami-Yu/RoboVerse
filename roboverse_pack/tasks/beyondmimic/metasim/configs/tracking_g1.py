@@ -28,7 +28,6 @@ VELOCITY_RANGE = {
 }
 
 
-# TODO should be moved to a separate file or the same location as config superclass
 @configclass
 class CfgTerm:
     """Configuration for terminal functions."""
@@ -122,7 +121,7 @@ class RewardsCfg:
             "threshold": 1.0,
             "body_names": r"^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)(?!left_wrist_yaw_link$)(?!right_wrist_yaw_link$).+$",
         },
-    )  # TODO check if `body_names` is correctly parsed
+    )
 
 
 @configclass
@@ -188,7 +187,6 @@ class TrackingG1EnvCfg(BaseEnvCfg):
     callbacks_query = {"contact_forces": ContactForces(history_length=3)}
 
     # TODO fully align domain randomization with BeyondMimic
-    # TODO uncomment DR after debugging evaluation pipeline
     callbacks_setup = {
         "material_randomizer": MaterialRandomizer(
             obj_name="g1_tracking",
@@ -214,7 +212,7 @@ class TrackingG1EnvCfg(BaseEnvCfg):
         ),
     }
     callbacks_post_step = {
-        # TODO slightly different from BeyondMimic, check if this works
+        # NOTE perhaps slightly different from how it's triggered in BeyondMimic
         "push_robot": (
             events.push_by_setting_velocity,
             {

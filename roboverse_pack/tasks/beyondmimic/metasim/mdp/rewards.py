@@ -88,11 +88,8 @@ def motion_global_body_angular_velocity_error_exp(
 
 def action_rate_l2(env: LeggedRobotTask, env_states: TensorState) -> torch.Tensor:
     """Penalize the rate of change of the actions using L2 squared kernel."""
-    return torch.sum(
-        # torch.square(env._action - env.history_buffer["actions"][-1]),
-        torch.square(env._action - env._prev_action),
-        dim=1,  # NOTE `env.actions` is already in the original order
-    )  # [n_envs, n_dims]
+    # NOTE `env.actions` is already in the original order
+    return torch.sum(torch.square(env._action - env._prev_action), dim=1)  # [n_envs, n_dims]
 
 
 def joint_pos_limits(env: LeggedRobotTask, env_states: TensorState) -> torch.Tensor:
@@ -106,7 +103,7 @@ def joint_pos_limits(env: LeggedRobotTask, env_states: TensorState) -> torch.Ten
     return torch.sum(out_of_limits, dim=1)
 
 
-def undesired_contacts(  # TODO check if this is correct
+def undesired_contacts(
     env: LeggedRobotTask,
     env_states: TensorState,
     threshold: float,

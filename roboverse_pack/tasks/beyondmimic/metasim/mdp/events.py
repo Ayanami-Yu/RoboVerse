@@ -25,7 +25,6 @@ def randomize_joint_default_pos(  # startup
 ):
     """Randomize the joint default positions which may be different from URDF due to calibration errors."""
     # save nominal value for export
-    # TODO check where `default_dof_pos_nominal` will be used
     env.default_dof_pos_nominal = torch.clone(env.default_dof_pos_sorted[0])
 
     # resolve environment ids

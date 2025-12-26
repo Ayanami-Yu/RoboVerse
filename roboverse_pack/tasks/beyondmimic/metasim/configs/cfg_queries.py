@@ -114,4 +114,4 @@ class ContactForces(BaseQueryType):
     @property
     def contact_forces(self) -> torch.Tensor:
         """Get the current contact forces."""
-        return self._contact_forces_queue[-1]  # TODO check this
+        return self._contact_forces_queue[-1]

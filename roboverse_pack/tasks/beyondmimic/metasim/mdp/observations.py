@@ -118,7 +118,4 @@ def joint_vel_rel(env: LeggedRobotTask, env_states: TensorState):
 
 def last_action(env: LeggedRobotTask, env_states: TensorState) -> torch.Tensor:
     """The last input action to the environment."""
-    # return env.action_manager.action
-    # TODO check if this is correct
-    # return env.history_buffer["actions"][-1]  # (n_envs, n_dofs)
     return env._action

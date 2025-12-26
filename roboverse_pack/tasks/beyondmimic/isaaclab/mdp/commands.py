@@ -24,7 +24,7 @@ from isaaclab.utils.math import (
 )
 
 if TYPE_CHECKING:
-    from roboverse_pack.tasks.beyondmimic.isaaclab.manager_based_rl_env import ManagerBasedRLEnv
+    from roboverse_pack.tasks.beyondmimic.isaaclab.envs.tracking_rl_env import TrackingRLEnv
 
 
 class MotionLoader:
@@ -32,7 +32,7 @@ class MotionLoader:
 
     def __init__(self, motion_file: str, body_indexes: Sequence[int], device: str = "cpu"):
         assert os.path.isfile(motion_file), f"Invalid file path: {motion_file}"
-        data = np.load(motion_file)  # TODO check shape
+        data = np.load(motion_file)
         self.fps = data["fps"]
         # target joint states from motion file
         self.joint_pos = torch.tensor(data["joint_pos"], dtype=torch.float32, device=device)  # [6574, 29]
@@ -72,7 +72,7 @@ class MotionCommand(CommandTerm):
 
     cfg: MotionCommandCfg
 
-    def __init__(self, cfg: MotionCommandCfg, env: ManagerBasedRLEnv):
+    def __init__(self, cfg: MotionCommandCfg, env: TrackingRLEnv):
         super().__init__(cfg, env)
 
         self.robot: Articulation = env.scene[cfg.asset_name]
@@ -109,7 +109,7 @@ class MotionCommand(CommandTerm):
         self.metrics["sampling_top1_bin"] = torch.zeros(self.num_envs, device=self.device)
 
     @property
-    def command(self) -> torch.Tensor:  # TODO Consider again if this is the best observation
+    def command(self) -> torch.Tensor:
         """Command for the motion tracking task."""
         return torch.cat([self.joint_pos, self.joint_vel], dim=1)
 
@@ -282,7 +282,7 @@ class MotionCommand(CommandTerm):
             return
         self._adaptive_sampling(env_ids)
 
-        # TODO check whether index 0 corresponds to root
+        # NOTE index 0 corresponds to root (pelvis)
         root_pos = self.body_pos_w[:, 0].clone()  # (n_envs, 3)
         root_ori = self.body_quat_w[:, 0].clone()  # (n_envs, 4)
         root_lin_vel = self.body_lin_vel_w[:, 0].clone()  # (n_envs, 3)

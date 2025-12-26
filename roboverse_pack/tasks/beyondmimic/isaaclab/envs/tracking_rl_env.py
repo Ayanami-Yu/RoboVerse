@@ -18,7 +18,7 @@ from loguru import logger as log
 from metasim.scenario.scenario import ScenarioCfg
 from metasim.task.registry import register_task
 
-from .manager_based_env_v2 import ManagerBasedEnvV2
+from .tracking_base_env import TrackingBaseEnv
 
 if TYPE_CHECKING:
     from isaaclab.envs.common import VecEnvStepReturn
@@ -26,11 +26,11 @@ if TYPE_CHECKING:
     from roboverse_learn.rl.configs.rsl_rl.ppo_tracking import RslRlPPOTrackingConfig
 
 
-@register_task("motion-tracking-isaaclab-v2")
-class ManagerBasedRLEnvV2(ManagerBasedEnvV2, gym.Env):  # TODO check removing `gym.Env`
+@register_task("motion-tracking-isaaclab")
+class TrackingRLEnv(TrackingBaseEnv, gym.Env):
     """The superclass for the manager-based workflow reinforcement learning-based environments.
 
-    This class inherits from :class:`ManagerBasedEnv` and implements the core functionality for
+    This class inherits from :class:`TrackingBaseEnv` and implements the core functionality for
     reinforcement learning-based environments. It is designed to be used with any RL
     library. The class is designed to be used with vectorized environments, i.e., the
     environment is expected to be run in parallel with multiple sub-environments. The
@@ -59,7 +59,6 @@ class ManagerBasedRLEnvV2(ManagerBasedEnvV2, gym.Env):  # TODO check removing `g
     scenario = ScenarioCfg()  # to align with the unified training script
 
     # TODO support render mode "rgb_array" when recording video
-    # TODO param `device` is not used? consider removing it
     def __init__(
         self,
         scenario: ScenarioCfg,
@@ -103,7 +102,6 @@ class ManagerBasedRLEnvV2(ManagerBasedEnvV2, gym.Env):  # TODO check removing `g
 
         # instantiate environment config
         # NOTE robot (`ArticulationCfg`) is included in `G1FlatEnvCfg` so the CLI arg `robot` will be ignored
-        # cfg = flat_env_cfg.G1FlatEnvCfg()
         cfg = self._init_cfg()
         cfg.scene.num_envs = scenario.num_envs
         cfg.seed = args.train_cfg["seed"]
@@ -121,7 +119,7 @@ class ManagerBasedRLEnvV2(ManagerBasedEnvV2, gym.Env):  # TODO check removing `g
         # -- set the framerate of the gym video recorder wrapper so that the playback speed of the produced video matches the simulation
         self.metadata["render_fps"] = 1 / self.step_dt
 
-        # TODO this is needed here because RoboVerse' `RslRlVecEnvWrapper` doesn't call `env.reset()` in its `__init__()`
+        # NOTE this is needed here because RoboVerse' `RslRlVecEnvWrapper` doesn't call `env.reset()` in its `__init__()`
         if not reset_in_env_wrapper:
             self.reset()
 
@@ -138,8 +136,7 @@ class ManagerBasedRLEnvV2(ManagerBasedEnvV2, gym.Env):  # TODO check removing `g
         parser = argparse.ArgumentParser()
         AppLauncher.add_app_launcher_args(parser)
         args = parser.parse_args([])
-        # args.enable_cameras = True
-        args.enable_cameras = False  # TODO why this defaults to True in MetaSim?
+        args.enable_cameras = False
         args.headless = headless
         app_launcher = AppLauncher(args)
 
@@ -246,7 +243,7 @@ class ManagerBasedRLEnvV2(ManagerBasedEnvV2, gym.Env):  # TODO check removing `g
     def step(self, action: torch.Tensor) -> VecEnvStepReturn:
         """Execute one time-step of the environment's dynamics and reset terminated environments.
 
-        Unlike the :class:`ManagerBasedEnv.step` class, the function performs the following operations:
+        Unlike the :class:`TrackingBaseEnv.step` class, the function performs the following operations:
 
         1. Process the actions.
         2. Perform physics stepping.
@@ -475,7 +472,7 @@ class ManagerBasedRLEnvV2(ManagerBasedEnvV2, gym.Env):  # TODO check removing `g
         info = self.command_manager.reset(env_ids)
         self.extras["log"].update(info)
         # -- event manager
-        info = self.event_manager.reset(env_ids)  # TODO events after commands? check what the events are
+        info = self.event_manager.reset(env_ids)
         self.extras["log"].update(info)
         # -- termination manager
         info = self.termination_manager.reset(env_ids)
@@ -488,8 +485,8 @@ class ManagerBasedRLEnvV2(ManagerBasedEnvV2, gym.Env):  # TODO check removing `g
         self.episode_length_buf[env_ids] = 0
 
 
-@register_task("motion-tracking-isaaclab-v2-deploy")
-class ManagerBasedRLEnvV2Deploy(ManagerBasedRLEnvV2, gym.Env):
+@register_task("motion-tracking-isaaclab-deploy")
+class TrackingRLEnvDeploy(TrackingRLEnv, gym.Env):
     """Task class for training motion tracker for deployment. The actuators are delayed, and the policy's observations `motion_anchor_pos_b` and `base_lin_vel` are removed."""
 
     def _init_cfg(self):

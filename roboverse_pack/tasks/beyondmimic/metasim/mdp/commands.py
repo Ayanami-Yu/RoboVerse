@@ -194,10 +194,6 @@ class MotionCommand:
             return
         self._adaptive_sampling(env_ids)
 
-        # TODO debug only, remove this
-        # import omni.log
-        # omni.log.info("Calling `_resample_command()`")
-
         root_pos = self.body_pos_w[:, 0].clone()  # (n_envs, 3)
         root_ori = self.body_quat_w[:, 0].clone()  # TODO w first or last
         root_lin_vel = self.body_lin_vel_w[:, 0].clone()
@@ -225,7 +221,6 @@ class MotionCommand:
 
         soft_joint_pos_limits = self.env.soft_dof_pos_limits_original[env_ids]
 
-        # TODO check if there are other components contained in `env_states` that possibly cause command setting incorrect
         joint_pos[env_ids] = torch.clip(
             joint_pos[env_ids], soft_joint_pos_limits[:, :, 0], soft_joint_pos_limits[:, :, 1]
         )
@@ -374,7 +369,6 @@ class MotionCommand:
     @property
     def body_pos_w(self) -> torch.Tensor:
         """Get the body positions in world frame."""
-        # return self.motion.body_pos_w[self.time_steps] + self.env.handler.scene.env_origins[:, None, :]
         # NOTE handler's `_set_states()` and `_get_states()` will handle `env_origins` internally (subtracts after getting states, and adds before setting states)
         return self.motion.body_pos_w[self.time_steps]
 
@@ -396,7 +390,6 @@ class MotionCommand:
     @property
     def anchor_pos_w(self) -> torch.Tensor:
         """Get the anchor position in world frame."""
-        # return self.motion.body_pos_w[self.time_steps, self.motion_anchor_body_index] + self.env.handler.scene.env_origins
         return self.motion.body_pos_w[self.time_steps, self.motion_anchor_body_index]
 
     @property

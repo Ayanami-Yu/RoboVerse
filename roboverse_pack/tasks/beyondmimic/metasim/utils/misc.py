@@ -69,9 +69,7 @@ def get_args():
 
     # training args
     parser.add_argument("--max_iterations", type=int, default=30000, help="Max number of training iterations")
-    parser.add_argument(
-        "--registry_name", type=str, default=None, help="Name of the WandB registry"
-    )  # TODO should be required
+    parser.add_argument("--registry_name", type=str, default=None, help="Name of the WandB registry")  # required
 
     return parser.parse_args()
 

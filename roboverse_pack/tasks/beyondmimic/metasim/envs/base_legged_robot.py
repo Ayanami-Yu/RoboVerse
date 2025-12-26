@@ -35,8 +35,6 @@ class LeggedRobotTask(RLTaskEnv):
         self._initial_states = list_state_to_tensor(self.handler, self._get_initial_states(), self.device)
 
         self.extras: dict[str, Any] = {}
-        # self._default_env_states = deepcopy(self._initial_states)
-        # self.setup_initial_env_states = deepcopy(self._initial_states)
         self.extras_buffer: dict[str, any] = {}
 
         # callbacks
@@ -193,10 +191,6 @@ class LeggedRobotTask(RLTaskEnv):
         # reset state of scene
         self._reset_idx(env_ids)
 
-        # TODO check whether this is necessary since command has just been resampled
-        # self.handler.simulate()
-
-        # TODO are these necessary?
         # update articulation kinematics
         # self.handler.scene.write_data_to_sim()
         # self.handler.sim.forward()
@@ -222,34 +216,17 @@ class LeggedRobotTask(RLTaskEnv):
         # update the curriculum for environments that need a reset
 
         # reset the internal buffers of the scene elements (actions, sensors, etc.)
-        # TODO reset contact sensor
-        # self.handler.scene.reset(env_ids)
+        # TODO reset contact sensor (currently not supported by MetaSim)
 
         # apply events such as randomizations for environments that need a reset
         for _reset_fn, _params in self.reset_callback.values():
             _ = _reset_fn(self, env_ids, **_params)
 
-        # FIXME setting to initial states here is incorrect?
-        # self.set_states(states=self.setup_initial_env_states, env_ids=env_ids)
-        # self.set_states(states=self._initial_states, env_ids=env_ids)
-
-        # reset observations
-        # for _obs in self.obs_buf_queue:
-        #     _obs[env_ids] = 0.0
-        # for _priv_obs in self.priv_obs_buf_queue:
-        #     _priv_obs[env_ids] = 0.0
-
         # reset actions
         self._prev_action[env_ids] = 0.0
         self._action[env_ids] = 0.0
 
-        # reset history buffers
-        # for history in self.history_buffer.values():
-        #     for item in history:
-        #         item[env_ids] = 0.0
-
         # reset rewards
-        # self.rew_buf[env_ids] = 0.0  # FIXME why did this even exist?
         for key in self.episode_rewards.keys():
             self.extras["episode"]["Episode_Reward/" + key] = (
                 torch.mean(self.episode_rewards[key][env_ids]) / self.cfg.max_episode_length_s
@@ -279,9 +256,6 @@ class LeggedRobotTask(RLTaskEnv):
         actions: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
         """Apply actions, simulate for `decimation` steps, and compute RLTask-style outputs."""
-        # if not isinstance(actions, torch.Tensor):
-        #     actions = torch.as_tensor(actions, device=self.device, dtype=torch.float32)
-        # TODO check when `self.num_envs == 1` and consider removing this
         if actions.ndim == 1:
             actions = actions.unsqueeze(0)
 
@@ -324,7 +298,6 @@ class LeggedRobotTask(RLTaskEnv):
         if len(reset_env_ids) > 0:
             self._reset_idx(env_ids=reset_env_ids)
 
-            # TODO are these necessary?
             # update articulation kinematics
             # self.handler.scene.write_data_to_sim()
             # self.handler.sim.forward()
@@ -357,13 +330,6 @@ class LeggedRobotTask(RLTaskEnv):
         return rew_buf
 
     def _terminated(self, env_states: TensorState | None) -> torch.BoolTensor:
-        # reset_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
-        # for _key in self.terminate_callback.keys():
-        #     _terminate_fn, _params = self.terminate_callback[_key]
-        #     _terminate_flag = (_terminate_fn(self, env_states, **_params)).detach().clone().to(torch.bool)
-        #     reset_buf = torch.logical_or(reset_buf, _terminate_flag)
-        #     self.episode_not_terminated[_key] += _terminate_flag.to(torch.float)
-
         self.reset_time_outs[:] = False
         self.reset_terminated[:] = False
         for name, term_cfg in asdict(self.cfg.terminations).items():
@@ -419,7 +385,7 @@ class LeggedRobotTask(RLTaskEnv):
         """Set simulator state for selected env indexes."""
         self.handler.set_states(states=states, env_ids=env_ids)
 
-    def _extra_spec(self) -> dict:  # TODO remove this if not needed
+    def _extra_spec(self) -> dict:
         """Expose optional sensor queries to the simulator handler."""
         return self._query
 
@@ -431,25 +397,12 @@ class LeggedRobotTask(RLTaskEnv):
     @property
     def obs_buf(self) -> torch.Tensor:
         """Policy (actor) observations in shape (num_envs, num_obs)."""
-        # """Stacked observation buffer with history along features."""
-        # if self.obs_buf_queue is None or len(self.obs_buf_queue) == 0:
-        #     raise RuntimeError("Observation buffer not initialized.")
-        # return torch.cat(list(self.obs_buf_queue), dim=1)
         return self._obs_buf["policy"]
 
     @property
     def priv_obs_buf(self) -> torch.Tensor:
         """Critic observations in shape (num_envs, num_priv_obs)."""
-        # """Stacked privileged observation buffer with history along features."""
-        # if self.priv_obs_buf_queue is None or len(self.priv_obs_buf_queue) == 0:
-        #     raise RuntimeError("Privileged observation buffer not initialized.")
-        # return torch.cat(list(self.priv_obs_buf_queue), dim=1)
         return self._obs_buf["critic"]
-
-    # @property
-    # def default_env_states(self) -> TensorState:
-    #     """Initial environment states used for resets."""
-    #     return self._default_env_states
 
     # for backward compatibility with RSL-RL env wrapper
 
