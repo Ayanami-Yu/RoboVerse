@@ -14,7 +14,6 @@ if TYPE_CHECKING:
     from roboverse_pack.tasks.beyondmimic.isaaclab.mdp.commands import MotionCommand
 
 
-# unused
 def bad_anchor_pos(env: TrackingRLEnv, command_name: str, threshold: float) -> torch.Tensor:
     """Distance between target and actual anchor position."""
     command: MotionCommand = env.command_manager.get_term(command_name)
@@ -44,7 +43,6 @@ def bad_anchor_ori(env: TrackingRLEnv, asset_cfg: SceneEntityCfg, command_name: 
     return (motion_projected_gravity_b[:, 2] - robot_projected_gravity_b[:, 2]).abs() > threshold
 
 
-# unused
 def bad_motion_body_pos(
     env: TrackingRLEnv, command_name: str, threshold: float, body_names: list[str] | None = None
 ) -> torch.Tensor:

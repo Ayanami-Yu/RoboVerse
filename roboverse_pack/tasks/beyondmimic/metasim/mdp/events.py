@@ -12,9 +12,6 @@ if TYPE_CHECKING:
     from roboverse_pack.tasks.beyondmimic.metasim.envs.base_legged_robot import LeggedRobotTask
 
 
-# adapted from BeyondMimic events.py
-
-
 def randomize_joint_default_pos(  # startup
     env: LeggedRobotTask,
     env_ids: torch.Tensor | None = None,
@@ -45,9 +42,6 @@ def randomize_joint_default_pos(  # startup
         if env_ids != slice(None) and joint_ids != slice(None):
             env_ids = env_ids[:, None]
         env.default_dof_pos_sorted[env_ids, joint_ids] = pos
-
-
-# adapted from `isaaclab.envs.mdp.events.py`
 
 
 def push_by_setting_velocity(

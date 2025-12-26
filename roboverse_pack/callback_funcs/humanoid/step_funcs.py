@@ -58,7 +58,7 @@ def resample_commands(env: EnvTypes, env_states: TensorState = None):
         cfg.value[:, 2] = torch.clip(0.5 * wrap_to_pi(cfg.value[:, 2] - heading), -1.0, 1.0)
 
 
-def push_by_setting_velocity(  # used
+def push_by_setting_velocity(
     env: EnvTypes,
     env_states: TensorState,
     interval_range_s: tuple | int = 5.0,

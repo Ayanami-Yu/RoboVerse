@@ -26,7 +26,7 @@ class AgentTask(RLTaskEnv):
     ) -> None:
         self.cfg = config
         _callbacks_cfg = asdict(getattr(self.cfg, "callbacks", CallbacksCfg()))
-        self._query: dict = _callbacks_cfg.pop("query", {})  # NOTE a key-value pair
+        self._query: dict = _callbacks_cfg.pop("query", {})
         self.robot = scenario.robots[0]
 
         # Initialize observation/action space attributes that RLTaskEnv would set
@@ -63,7 +63,7 @@ class AgentTask(RLTaskEnv):
 
         _setup_callbacks = callbacks.pop("setup", {})
         for _setup_fn, _params in _setup_callbacks.values():
-            _setup_fn(**_params)  # call itself
+            _setup_fn(**_params)  ## call itself
         self.reset_callback = callbacks.pop("reset", {})
         assert isinstance(self.reset_callback, dict)
         self.pre_physics_step_callback = callbacks.pop("pre_step", {})
@@ -96,7 +96,7 @@ class AgentTask(RLTaskEnv):
 
     def _physics_step(self, actions: Action) -> TensorState:
         """Issue low-level actions and simulate one physics step."""
-        self.handler.set_dof_targets(actions)  # NOTE corresponds to alphabetical joint order
+        self.handler.set_dof_targets(actions)
         self.handler.simulate()  # decimation control in task_env level
         return self.handler.get_states()
 

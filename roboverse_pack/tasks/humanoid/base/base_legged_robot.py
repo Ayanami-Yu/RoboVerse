@@ -29,26 +29,25 @@ class LeggedRobotTask(AgentTask):
         config: BaseEnvCfg,
         device: str | torch.device | None = None,
     ) -> None:
-        super().__init__(scenario=scenario, config=config, device=device)  # NOTE bind callbacks here
+        super().__init__(scenario=scenario, config=config, device=device)
         self.name = self.robot.name if hasattr(self, "robot") else getattr(self, "name", None)
-        self.num_actions = len(self.robot.actuators)  # n_dofs
+        self.num_actions = len(self.robot.actuators)
         self.sim_dt = self.scenario.sim_params.dt
-        # TODO is `body_names` encapsulated by handler? but MotionCommand needs to specify a subset of it
-        self.sorted_body_names = self.handler.get_body_names(self.name, sort=True)  # [30]  # TODO check this
-        self.sorted_joint_names = self.handler.get_joint_names(self.name, sort=True)  # [29]
+        self.sorted_body_names = self.handler.get_body_names(self.name, sort=True)
+        self.sorted_joint_names = self.handler.get_joint_names(self.name, sort=True)
 
         self._instantiate_cfg(self.cfg)
         self._init_joint_cfg()
         self._init_reward_function()
         self._init_buffers()
-        self.reset()  # reset at the start since the RSL-RL runner does not call reset
+        self.reset()
 
     def _compute_task_observations(self, env_states: TensorState) -> tuple[torch.Tensor, torch.Tensor | None]:
         """Return (policy_obs, privileged_obs). Implemented by subclasses."""
         raise NotImplementedError
 
     def _instantiate_cfg(self, config: BaseEnvCfg | None):
-        self.cfg = config  # FIXME reassignment?
+        self.cfg = config
         # value assignments from configs
         self.decimation = self.cfg.control.decimation
         self.step_dt = self.sim_dt * self.decimation
@@ -116,7 +115,7 @@ class LeggedRobotTask(AgentTask):
             "soft_joint_vel_limit_factor",
             getattr(self.robot, "soft_joint_vel_limit_factor", 1.0),
         )
-        # TODO check default joint pos correspondence
+
         default_joint_pos = self.cfg.initial_states.robots[robot.name].get(
             "default_joint_pos", robot.default_joint_positions
         )
@@ -140,7 +139,7 @@ class LeggedRobotTask(AgentTask):
         # delay = torch.rand((self.num_envs, 1), device=self.device)
         # actions = (1 - delay) * actions = torch.clip(actions, -self.action_clip, self.action_clip)
 
-        for pre_fn, _params in self.pre_physics_step_callback.values():  # NOTE empty dict
+        for pre_fn, _params in self.pre_physics_step_callback.values():
             pre_fn(self, **_params)
         actions = torch.clip(actions, -self.action_clip, self.action_clip)
 
@@ -215,7 +214,7 @@ class LeggedRobotTask(AgentTask):
             1,
         ))
 
-        self.commands_manager.resample(self)  # step_funcs.resample_commands()
+        self.commands_manager.resample(self)
 
         # for observation history
         env_states = self.handler.get_states()
@@ -253,9 +252,7 @@ class LeggedRobotTask(AgentTask):
         effort = torch.clip(effort, -self.torque_limits, self.torque_limits)
         return effort.to(torch.float32)
 
-    def reset(
-        self, env_ids: torch.Tensor | list[int] | None = None
-    ):  # NOTE called both in `__init__()` and `_post_physics_step()`
+    def reset(self, env_ids: torch.Tensor | list[int] | None = None):
         """Reset selected envs (defaults to all)."""
         if env_ids is None:
             env_ids = torch.tensor(list(range(self.num_envs)), device=self.device)
@@ -275,7 +272,7 @@ class LeggedRobotTask(AgentTask):
             for item in history:
                 item[env_ids] = 0.0
         self._episode_steps[env_ids] = 0
-        self.actions[env_ids] = 0.0  # NOTE updated in `step()`
+        self.actions[env_ids] = 0.0
         self.rew_buf[env_ids] = 0.0
 
         # reset observation history buffers
@@ -285,10 +282,9 @@ class LeggedRobotTask(AgentTask):
             _priv_obs[env_ids] = 0.0
 
         ################# LOGS #################
-        for key in self.episode_rewards.keys():  # NOTE corresponds to `RewardManager._episode_sums` in Isaac Lab
+        for key in self.episode_rewards.keys():
             self.extras["episode"]["Episode_Reward/" + key] = (
-                torch.mean(self.episode_rewards[key][env_ids])
-                / self.cfg.episode_length_s  # NOTE this is the same in `RewardManager.reset()` in Isaac Lab
+                torch.mean(self.episode_rewards[key][env_ids]) / self.cfg.episode_length_s
             )
             self.episode_rewards[key][env_ids] = 0.0
         for key in self.episode_not_terminations.keys():
@@ -326,7 +322,7 @@ class LeggedRobotTask(AgentTask):
         env_states = self.get_states()
         for _ in range(self.decimation):
             applied_action = (
-                self._compute_effort(processed_actions, env_states) if self.manual_pd_on else processed_actions  # True
+                self._compute_effort(processed_actions, env_states) if self.manual_pd_on else processed_actions
             )
             env_states = self._physics_step(applied_action)
         # self.torques[:] = applied_action.clone()
@@ -388,22 +384,22 @@ class LeggedRobotTask(AgentTask):
         # copy to the history buffer
         for key, history in self.history_buffer.items():
             if hasattr(self, key):
-                history.append(getattr(self, key).clone())  # NOTE `actions` here
+                history.append(getattr(self, key).clone())
             elif hasattr(env_states.robots[self.name], key):
                 history.append(getattr(env_states.robots[self.name], key).clone())
             else:
                 raise ValueError(f"History buffer key {key} not found in task or robot states.")
-        # NOTE the order of command, obs, and events here is different from Isaac Lab, is this wrong?
+
         for _step_fn, _params in self.post_physics_step_callback.values():
-            _step_fn(self, env_states, **_params)  # only `push_by_setting_velocity()`
+            _step_fn(self, env_states, **_params)
 
     def _reward(self, env_states):
         rew_buf = torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
         for name, func in self.reward_functions.items():
             scale, params = self.reward_scales[name]
             rew = scale * func(self, env_states, **params)
-            rew_buf += rew  # [n_envs,]
-            self.episode_rewards[name] += rew  # [n_envs,]
+            rew_buf += rew
+            self.episode_rewards[name] += rew
 
         if self.cfg.rewards.only_positive_rewards:
             rew_buf[:] = torch.clip(rew_buf[:], min=0.0)
@@ -419,14 +415,12 @@ class LeggedRobotTask(AgentTask):
             self.episode_not_terminations[_key] += _terminate_flag.to(torch.float)
         return reset_buf
 
-    def _time_out(
-        self, env_states: TensorState | None
-    ) -> torch.BoolTensor:  # FIXME `time_out` already exists in `termination_funcs.py` so this is redundant
+    def _time_out(self, env_states: TensorState | None) -> torch.BoolTensor:
         """Timeout flags.
 
         Note that max_episode_steps is set to -1 by default (no timeout).
         """
-        return self._episode_steps >= self.max_episode_steps  # [n_envs]
+        return self._episode_steps >= self.max_episode_steps
 
     def _get_initial_states(self):
         """Return list of per-env initial states derived from config."""

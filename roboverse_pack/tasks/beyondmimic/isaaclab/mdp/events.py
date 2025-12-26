@@ -12,7 +12,6 @@ if TYPE_CHECKING:
     from roboverse_pack.tasks.beyondmimic.isaaclab.envs.tracking_rl_env import TrackingRLEnv
 
 
-# NOTE events are not used in evaluation
 def randomize_joint_default_pos(
     env: TrackingRLEnv,
     env_ids: torch.Tensor | None,

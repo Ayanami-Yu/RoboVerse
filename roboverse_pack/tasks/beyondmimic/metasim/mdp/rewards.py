@@ -14,9 +14,6 @@ if TYPE_CHECKING:
     from roboverse_pack.tasks.beyondmimic.metasim.envs.base_legged_robot import LeggedRobotTask
 
 
-# adapted from BeyondMimic rewards.py
-
-
 def motion_global_anchor_position_error_exp(env: LeggedRobotTask, env_states: TensorState, std: float) -> torch.Tensor:
     """Global anchor position error."""
     robot_state = env_states.robots[env.name]
@@ -81,9 +78,6 @@ def motion_global_body_angular_velocity_error_exp(
         torch.square(env.commands.body_ang_vel_w[:, body_indexes] - body_state[:, body_indexes, 10:13]), dim=-1
     )
     return torch.exp(-error.mean(-1) / std**2)
-
-
-# adapted from `isaaclab.envs.mdp.rewards.py`
 
 
 def action_rate_l2(env: LeggedRobotTask, env_states: TensorState) -> torch.Tensor:

@@ -14,9 +14,7 @@ def root_height_below_minimum(env: EnvTypes, env_states: TensorState, minimum_he
     Note:
         This is currently only supported for flat terrains, i.e. the minimum height is in the world frame.
     """
-    robot_state = env_states.robots[
-        env.name
-    ]  # len(robot_state.body_names) == 30 including "pelvis"; robot_state.body_state.shape == (n_envs, 30, 13); 13 = 3 (position) + 4 (orientation) + 3 (linear velocity) + 3 (angular velocity)
+    robot_state = env_states.robots[env.name]
     return robot_state.root_state[:, 2] < minimum_height
 
 

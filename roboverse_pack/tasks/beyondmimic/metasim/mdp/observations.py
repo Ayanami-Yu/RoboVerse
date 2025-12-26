@@ -11,7 +11,6 @@ if TYPE_CHECKING:
     from roboverse_pack.tasks.beyondmimic.metasim.envs.base_legged_robot import LeggedRobotTask
 
 
-# adapted from BeyondMimic observations.py
 # NOTE all return values are in the original order to align with checkpoints trained by original BeyondMimic repo
 
 
@@ -79,9 +78,6 @@ def motion_anchor_ori_b(env: LeggedRobotTask, env_states: TensorState) -> torch.
     return mat[..., :2].reshape(
         mat.shape[0], -1
     )  # [n_envs, 6] extract the first two rows because the third row can be derived from orthogonality
-
-
-# adapted from isaaclab.envs.mdp.observations.py
 
 
 def generated_commands(env: LeggedRobotTask, env_states: TensorState) -> torch.Tensor:

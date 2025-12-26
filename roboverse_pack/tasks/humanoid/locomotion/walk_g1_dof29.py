@@ -254,7 +254,7 @@ class WalkG1Dof29Task(LeggedRobotTask):
         self.obs_noise[6:9] = 0.05  # projected_gravity
         self.obs_noise[9 : 9 + self.num_actions] = 0.01
         self.obs_noise[9 + self.num_actions : 9 + 2 * self.num_actions] = 1.5  # joint velocities
-        return super()._init_buffers()  # FIXME but there is no return value?
+        return super()._init_buffers()
 
     def _compute_task_observations(self, env_states: TensorState):
         robot_state = env_states.robots[self.robot.name]
@@ -262,45 +262,43 @@ class WalkG1Dof29Task(LeggedRobotTask):
         base_lin_vel = quat_rotate_inverse(base_quat, robot_state.root_state[:, 7:10])
         base_ang_vel = quat_rotate_inverse(base_quat, robot_state.root_state[:, 10:13])
         projected_gravity = quat_rotate_inverse(base_quat, self.gravity_vec)
-        # FIXME `default_dof_pos` should not be an attribute of the task class if we want to support multiple robots
-        q = env_states.robots[self.name].joint_pos - self.default_dof_pos  # [n_envs, n_dofs] -> [1, 29]
-        dq = env_states.robots[self.name].joint_vel - self.default_dof_vel  # [n_envs, n_dofs]
-        # TODO check where `self.actions` is computed
+
+        q = env_states.robots[self.name].joint_pos - self.default_dof_pos
+        dq = env_states.robots[self.name].joint_vel - self.default_dof_vel
+
         # gait = self._gait_phase()
 
         obs_buf = torch.cat(
             (
-                self.commands_manager.value,  # [n_envs, 3]
-                base_ang_vel,  # [n_envs, 3]
-                projected_gravity,  # [n_envs, 3]
-                q,  # [n_envs, 29]
-                dq,  # [n_envs, 29]
-                self.actions,  # [n_envs, 29]
+                self.commands_manager.value,  # 3
+                base_ang_vel,  # 3
+                projected_gravity,  # 3
+                q,  # |A|
+                dq,  # |A|
+                self.actions,  # |A|
                 # gait
             ),
             dim=-1,
-        )  # [n_envs, 3 + 3 + 3 + 29 + 29 + 29] = [n_envs, 96]
+        )
 
         priv_obs_buf = torch.cat(
             (
-                self.commands_manager.value,  # [n_envs, 3]
-                base_lin_vel,  # [n_envs, 3]
-                base_ang_vel,  # [n_envs, 3]
-                projected_gravity,  # [n_envs, 3]
-                q,  # [n_envs, 29]
-                dq,  # [n_envs, 29]
-                self.actions,  # [n_envs, 29]
+                self.commands_manager.value,  # 3
+                base_lin_vel,  # 3
+                base_ang_vel,  # 3
+                projected_gravity,  # 3
+                q,  # |A|
+                dq,  # |A|
+                self.actions,  # |A|
                 # gait
             ),
             dim=-1,
-        )  # [n_envs, 3 + 3 + 3 + 3 + 29 + 29 + 29] = [n_envs, 99]
+        )
 
         obs_buf += (2 * torch.rand_like(obs_buf) - 1) * self.obs_noise
 
         # clip observations -> scale observations
-        obs_buf = obs_buf.clip(-self.obs_clip_limit, self.obs_clip_limit) * self.obs_scale  # [n_envs, 96]
-        priv_obs_buf = (
-            priv_obs_buf.clip(-self.obs_clip_limit, self.obs_clip_limit) * self.priv_obs_scale
-        )  # [n_envs, 99]
+        obs_buf = obs_buf.clip(-self.obs_clip_limit, self.obs_clip_limit) * self.obs_scale
+        priv_obs_buf = priv_obs_buf.clip(-self.obs_clip_limit, self.obs_clip_limit) * self.priv_obs_scale
 
         return obs_buf, priv_obs_buf
