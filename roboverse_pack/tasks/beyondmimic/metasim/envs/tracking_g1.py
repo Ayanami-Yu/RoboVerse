@@ -56,8 +56,7 @@ class TrackingG1Task(LeggedRobotTask):
         scenario: ScenarioCfg,
         args: RslRlPPOTrackingConfig,
         device: str | torch.device,
-        # env_cfg: TrackingG1EnvCfg,
-        reset_in_env_wrapper: bool = True,
+        reset_in_env_wrapper: bool = False,
     ) -> None:
         scenario_copy = copy.deepcopy(scenario)
         scenario_copy.__post_init__()
