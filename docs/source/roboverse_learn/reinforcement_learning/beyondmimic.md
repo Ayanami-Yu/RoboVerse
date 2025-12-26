@@ -20,7 +20,7 @@ pip install -e .
 
 ## Motion Preparation
 
-### Downlaod Description Files
+### Download Description Files
 
 ```bash
 cd RoboVerse
