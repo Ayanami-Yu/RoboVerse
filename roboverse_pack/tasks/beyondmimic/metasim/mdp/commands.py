@@ -24,9 +24,6 @@ if TYPE_CHECKING:
     from roboverse_pack.tasks.beyondmimic.metasim.envs.tracking_g1 import TrackingG1Task
 
 
-# adapted from BeyondMimic commands.py
-
-
 class MotionLoader:
     """Load motion data from a file and provide access to target joint states and body positions and orientations in world frame."""
 
@@ -96,8 +93,6 @@ class MotionCommandCfg:
     adaptive_lambda: float = 0.8
     adaptive_uniform_ratio: float = 0.1
     adaptive_alpha: float = 0.001
-
-    # TODO add `debug_vis` from BeyondMimic?
 
 
 class MotionCommand:
@@ -195,7 +190,7 @@ class MotionCommand:
         self._adaptive_sampling(env_ids)
 
         root_pos = self.body_pos_w[:, 0].clone()  # (n_envs, 3)
-        root_ori = self.body_quat_w[:, 0].clone()  # TODO w first or last
+        root_ori = self.body_quat_w[:, 0].clone()
         root_lin_vel = self.body_lin_vel_w[:, 0].clone()
         root_ang_vel = self.body_ang_vel_w[:, 0].clone()
 

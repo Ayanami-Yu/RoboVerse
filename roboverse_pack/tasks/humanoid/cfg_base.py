@@ -50,7 +50,7 @@ class BaseEnvCfg:
             lin_vel_x = [-1.0, 1.0]  # min max [m/s]
             lin_vel_y = [-1.0, 1.0]  # min max [m/s]
             ang_vel_yaw = [-1, 1]  # min max [rad/s]
-            heading = [-3.14, 3.14]  # TODO what is this used for?
+            heading = [-3.14, 3.14]
 
         num_commands = 3  # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 10.0  # time before command are changed[s]
@@ -122,7 +122,7 @@ class BaseEnvCfg:
     callbacks_terminate: dict[str, tuple[Callable, dict] | Callable] = MISSING
     callbacks_query: dict[str, tuple[Callable, dict] | Callable] = MISSING
 
-    def __post_init__(self):  # NOTE `callbacks_query` etc. have been assigned in subclass
+    def __post_init__(self):
         self.callbacks = CallbacksCfg()
         self.callbacks.query = self._normalize(self.callbacks_query)
         self.callbacks.terminate = self._normalize(self.callbacks_terminate)

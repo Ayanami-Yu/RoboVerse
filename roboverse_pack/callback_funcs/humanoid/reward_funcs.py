@@ -239,7 +239,7 @@ def feet_clearance(
     return torch.exp(-torch.sum(reward, dim=1) / std**2)
 
 
-def undesired_contacts(  # used
+def undesired_contacts(
     env: EnvTypes,
     env_states: TensorState,
     threshold: float,

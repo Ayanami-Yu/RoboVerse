@@ -1117,7 +1117,7 @@ class IsaacsimHandler(BaseSimHandler):
             prim_path=f"/World/envs/env_.*/{self.robots[0].name}/.*",
             history_length=3,
             # update_period=0.005,
-            force_threshold=10.0,  # TODO check whether this modification is necessary
+            force_threshold=10.0,
             track_air_time=True,
         )
         self.contact_sensor = ContactSensor(contact_sensor_config)

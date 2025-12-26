@@ -18,7 +18,6 @@ def time_out(env: LeggedRobotTask, env_states: TensorState) -> torch.Tensor:
     return env._episode_steps >= env.max_episode_steps
 
 
-# adapted from BeyondMimic terminations.py
 # NOTE bodies are in the original order
 
 

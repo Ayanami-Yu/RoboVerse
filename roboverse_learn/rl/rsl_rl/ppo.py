@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '5'  # TODO debug only, remove this
 import random
 
 try:

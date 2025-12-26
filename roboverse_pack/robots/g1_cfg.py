@@ -21,7 +21,7 @@ class G1Dof12Cfg(RobotCfg):
     enabled_self_collisions: bool = True
     isaacgym_read_mjcf = False
     isaacgym_flip_visual_attachments: bool = False
-    collapse_fixed_joints: bool = False  # True
+    collapse_fixed_joints: bool = False
 
     actuators: dict[str, BaseActuatorCfg] = {
         # N7520-14.3: hip_pitch, hip_yaw (stiffness 100, damping 2, torque 88, vel 32)
@@ -89,7 +89,7 @@ class G1Dof12Cfg(RobotCfg):
         "right_ankle_roll_joint": "effort",
     }
 
-    # rigid body name substrings, to find indices of different rigid bodies.  # TODO find where these substrings are used
+    # rigid body name substrings, to find indices of different rigid bodies.
     feet_links: list[str] = ["ankle_roll"]
     knee_links: list[str] = ["knee"]
     torso_links: list[str] = ["torso_link"]
@@ -218,7 +218,6 @@ class G1Dof27Cfg(G1Dof23Cfg):
     #     "right_wrist_pitch_joint": 5,
     #     "right_wrist_yaw_joint": 5,
     # }
-    # TODO this is used by BeyondMimic – check if correspondence is correct
     default_joint_positions = {
         **G1Dof23Cfg().default_joint_positions,
         "left_wrist_pitch_joint": 0.0,
