@@ -65,7 +65,7 @@ class TrackingRLEnv(TrackingBaseEnv, gym.Env):
         args: RslRlPPOTrackingConfig,
         device: str | torch.device | None = None,
         render_mode: str | None = None,
-        reset_in_env_wrapper: bool = True,
+        reset_in_env_wrapper: bool = False,
     ):
         """Initialize the environment.
 

@@ -1,10 +1,6 @@
 from __future__ import annotations
 
 import os
-
-# FIXME adding the following line will cause GUI to break?
-# os.environ['CUDA_VISIBLE_DEVICES'] = '6'  # TODO debug only, remove this
-
 import random
 
 try:
@@ -22,17 +18,13 @@ from rsl_rl.runners import OnPolicyRunner
 
 rootutils.setup_root(__file__, pythonpath=True)
 
-# NOTE this script is for RSL-RL v2.3.0
-
 from roboverse_learn.rl.configs.rsl_rl.ppo_tracking import RslRlPPOTrackingConfig
-from roboverse_learn.rl.rsl_rl.env_wrapper_tracking_v1 import TrackingRslRlVecEnvWrapperV1
+from roboverse_learn.rl.rsl_rl.env_wrapper import RslRlEnvWrapper
 from metasim.task.registry import get_task_class
 
 
-# TODO are these necessary?
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
-torch.backends.cudnn.deterministic = False
 torch.backends.cudnn.benchmark = False
 
 
@@ -86,7 +78,7 @@ def evaluate(args: RslRlPPOTrackingConfig):
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
-    # torch.backends.cudnn.deterministic = args.torch_deterministic
+    torch.backends.cudnn.deterministic = args.torch_deterministic
 
     device = torch.device(args.device if torch.cuda.is_available() and args.cuda else "cpu")
     print(f"Using device: {device}")
@@ -120,44 +112,7 @@ def evaluate(args: RslRlPPOTrackingConfig):
     # print(f"Loaded training config from task: {task_cls.__name__}")
 
     # Create environment wrapper
-    # wrapped_env = TrackingRslRlVecEnvWrapper(env, train_cfg=args.train_cfg)
-    env_wrapper = TrackingRslRlVecEnvWrapperV1(env)
-
-    # Get observations from environment (needed for resolve_obs_groups)
-    # from rsl_rl.utils import resolve_obs_groups
-    # from rsl_rl.modules import ActorCritic
-
-    # obs = env_wrapper.get_observations()
-
-    # Resolve obs_groups (mimicking OnPolicyRunner.__init__)
-    # default_sets = ["critic"]
-    # args.obs_groups = resolve_obs_groups(obs, {}, default_sets)
-    # obs_groups = args.obs_groups
-
-    # Extract policy config
-    # policy_cfg = args.policy
-
-    # Create actor-critic model with obs and obs_groups
-    # actor_critic = ActorCritic(
-    #     obs=obs,
-    #     obs_groups=obs_groups,
-    #     num_actions=env.num_actions,
-    #     actor_hidden_dims=policy_cfg.actor_hidden_dims,
-    #     critic_hidden_dims=policy_cfg.critic_hidden_dims,
-    #     activation=policy_cfg.activation,
-    #     init_noise_std=policy_cfg.init_noise_std,
-    # ).to(device)
-
-    # Load the model weights
-    # actor_critic.load_state_dict(checkpoint['model_state_dict'])
-    # actor_critic.eval()
-
-    # Create inference policy (just the actor part)
-    # policy = actor_critic.act_inference
-
-    # Disable curriculum and command resampling for eval
-    # env.cfg.curriculum.enabled = False
-    # env.cfg.commands.resampling_time = 1e6  # effectively disable command changes
+    env_wrapper = RslRlEnvWrapper(env, train_cfg=args.train_cfg)
 
     runner = OnPolicyRunner(
         env=env_wrapper,
@@ -169,25 +124,17 @@ def evaluate(args: RslRlPPOTrackingConfig):
     policy = runner.get_inference_policy(device=device)
 
     # Reset environment
-    obs, _ = env_wrapper.get_observations()
-
-    # env.reset()
-    # obs, _, _, _, _ = env.step(torch.zeros(env.num_envs, env.num_actions, device=device))
-    # obs = env_wrapper.get_observations()
+    obs = env_wrapper.get_observations()
 
     print(f"Starting evaluation for 1000000 steps...")
     for i in range(1000000):
-        # set fixed command
-        # env.commands_manager.value[:, 0] = 0.5
-        # env.commands_manager.value[:, 1] = 0.0
-        # env.commands_manager.value[:, 2] = 0.0
         actions = policy(obs)
         obs, _, _, _ = env_wrapper.step(actions)
 
         if (i + 1) % 1000 == 0:
             print(f"Step {i + 1}/1000000")
 
-    env_wrapper.close()  # TODO is this necessary?
+    env_wrapper.close()
     print("Evaluation complete!")
 
 

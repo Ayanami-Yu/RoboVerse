@@ -38,7 +38,7 @@ class RslRlEnvWrapper:
 
         # move time out information to the extras dict
         # this is only needed for infinite horizon tasks
-        # FIXME is the lack of this the reason why mean reward is not high enough?
+        # NOTE this is required by PPO to compute rewards for optimizing critic
         if not getattr(self.env.cfg, "is_finite_horizon", False):
             extras["time_outs"] = truncated
 
@@ -75,8 +75,6 @@ class RslRlEnvWrapper:
 
     @property
     def cfg(self) -> dict | object:
-        # FIXME `train_cfg` is of type `dict`; however, in `WandBSummaryWriter.store_config()` which is called in `OnPolicyRunner._prepare_logging_writer()`, this attribute is expected to be of type `configclass` or `dataclass`
-        # return self.train_cfg
         return self.env.cfg if hasattr(self.env, "cfg") else self.train_cfg
 
     @property

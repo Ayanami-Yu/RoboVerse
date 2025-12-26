@@ -101,7 +101,7 @@ class IsaacsimHandler(BaseSimHandler):
         from isaaclab.sim import PhysxCfg, SimulationCfg, SimulationContext
 
         sim_config: SimulationCfg = SimulationCfg(
-            device="cuda:0",  # FIXME why hard-code the 0-th GPU?
+            device="cuda:0",
             render_interval=self.scenario.decimation,  # TODO divide into render interval and control decimation
             physx=PhysxCfg(
                 bounce_threshold_velocity=self.scenario.sim_params.bounce_threshold_velocity,
@@ -579,7 +579,7 @@ class IsaacsimHandler(BaseSimHandler):
         self._manual_pd_on.append(manual_pd)
 
         use_urdf: bool = getattr(robot, "use_urdf", False)  # TODO this is a temporary workaround
-        if use_urdf:  # TODO support both URDF and USD
+        if use_urdf:  # TODO consider converting this to USD
             spawn_cfg = sim_utils.UrdfFileCfg(
                 fix_base=False,
                 replace_cylinders_with_capsules=True,
@@ -636,8 +636,6 @@ class IsaacsimHandler(BaseSimHandler):
             },
         )
         cfg.prim_path = f"/World/envs/env_.*/{robot.name}"
-        # cfg.spawn.usd_path = os.path.abspath(robot.usd_path)  # FIXME why assign this absolute path afterwards?
-        # TODO will this be changed later?
         init_state = ArticulationCfg.InitialStateCfg(
             pos=getattr(robot, "default_pos", [0.0, 0.0, 0.0]),
             joint_pos=robot.default_joint_positions,

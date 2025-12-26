@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '6'  # TODO debug only, remove this
-
 import random
 
 try:
@@ -18,17 +16,13 @@ from rsl_rl.runners import OnPolicyRunner
 
 rootutils.setup_root(__file__, pythonpath=True)
 
-# NOTE this script is for RSL-RL v2.3.0
-
 from roboverse_learn.rl.configs.rsl_rl.ppo_tracking import RslRlPPOTrackingConfig
-from roboverse_learn.rl.rsl_rl.env_wrapper_tracking_v1 import TrackingRslRlVecEnvWrapperV1
+from roboverse_learn.rl.rsl_rl.env_wrapper import RslRlEnvWrapper
 from metasim.task.registry import get_task_class
 
 
-# TODO are these necessary?
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
-torch.backends.cudnn.deterministic = False
 torch.backends.cudnn.benchmark = False
 
 
@@ -37,7 +31,6 @@ def make_roboverse_env(args: RslRlPPOTrackingConfig):
     task_cls = get_task_class(args.task)
 
     # Load environment configuration from task
-
     scenario = task_cls.scenario.update(
         robots=[args.robot],
         simulator=args.sim,
@@ -48,8 +41,6 @@ def make_roboverse_env(args: RslRlPPOTrackingConfig):
     device = torch.device(args.device if torch.cuda.is_available() and args.cuda else "cpu")
 
     # Pass env_cfg to task constructor
-    # env = task_cls(scenario=scenario, device=device)
-    # NOTE pass `args` into init because task class requires motion file path
     env = task_cls(scenario=scenario, args=args, device=device)
     return env
 
@@ -60,7 +51,7 @@ def train(args: RslRlPPOTrackingConfig):
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
-    # torch.backends.cudnn.deterministic = args.torch_deterministic  # TODO does this influence the performance?
+    torch.backends.cudnn.deterministic = args.torch_deterministic
 
     device = torch.device(args.device if torch.cuda.is_available() and args.cuda else "cpu")
     print(f"Using device: {device}")
@@ -88,7 +79,7 @@ def train(args: RslRlPPOTrackingConfig):
     train_cfg = args.train_cfg
 
     # Create environment wrapper
-    env_wrapper = TrackingRslRlVecEnvWrapperV1(env)
+    env_wrapper = RslRlEnvWrapper(env, train_cfg=train_cfg)
 
     runner = OnPolicyRunner(
         env=env_wrapper,
