@@ -11,7 +11,6 @@ from loguru import logger as log
 # Optional: RoboSplatter imports for GS background rendering
 try:
     from robo_splatter.models.camera import Camera as SplatCamera
-    from robo_splatter.render.scenes import SceneRenderType
 
     ROBO_SPLATTER_AVAILABLE = True
 except ImportError:
@@ -240,7 +239,7 @@ class IsaacgymHandler(BaseSimHandler):
                 image_width=width,
                 device=self.device,
             )
-            gs_result = self.gs_background.render(gs_cam, render_type=SceneRenderType.FOREGROUND)
+            gs_result = self.gs_background.render(gs_cam)
 
             # Get GS background and normalize to tensors on device (handle numpy or torch)
             gs_rgb = gs_result.rgb[0].to(self.device)
@@ -774,8 +773,11 @@ class IsaacgymHandler(BaseSimHandler):
 
         # Apply GS background rendering if enabled
         # TODO: Render with batch parallelization for efficiency
-        if self.scenario.gs_scene.with_gs_background and self.gs_background is not None:
-            assert ROBO_SPLATTER_AVAILABLE, "RoboSplatter is not available. GS background rendering will be disabled."
+        if (
+            self.scenario.gs_scene is not None
+            and self.scenario.gs_scene.with_gs_background
+            and self.gs_background is not None
+        ):
             camera_states = self._apply_gs_background_rendering(camera_states, env_ids)
 
         extras = self.get_extra()  # extra observations

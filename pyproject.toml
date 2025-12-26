@@ -44,8 +44,9 @@ genesis = [
 
 ]
 robosplatter = [
-   "robo-splatter @ git+https://github.com/HorizonRobotics/RoboSplatter.git@v0.1.2",
+   "robo-splatter @ git+https://github.com/HorizonRobotics/RoboSplatter.git",
    "setuptools==59.5.0"
+
 ]
 
 [tool.uv]
