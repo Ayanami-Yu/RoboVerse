@@ -202,7 +202,6 @@ class IsaacsimHandler(BaseSimHandler):
         # Initialize GS background if enabled
         self._build_gs_background()
         super().launch()
-        # self.sim.reset()  # crucial for calling _initialize_callbacks in binded sensors  # FIXME this causes simulation to stop?
 
     def close(self) -> None:
         log.info("close Isaacsim Handler")
@@ -539,7 +538,6 @@ class IsaacsimHandler(BaseSimHandler):
                 # position control
                 robot_inst.set_joint_position_target(joint_targets, joint_ids=joint_ids)
 
-            # FIXME is this redundant since it'll be called later in `scene.write_data_to_sim()` in `_simulate()`?
             robot_inst.write_data_to_sim()
 
     def _simulate(self):
@@ -566,8 +564,6 @@ class IsaacsimHandler(BaseSimHandler):
         # Ensure camera pose is correct, especially for the first few frames
         if self._physics_step_counter < 5:
             self._update_camera_pose()
-
-        # self._physics_step_counter += 1  # FIXME incorrect update logic
 
     def _add_robot(self, robot: ArticulationObjCfg) -> None:
         import isaaclab.sim as sim_utils
