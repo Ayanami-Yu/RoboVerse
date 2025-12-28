@@ -11,7 +11,7 @@ from metasim.utils import configclass
 class BaseActuatorCfg:
     """Base configuration class for actuators."""
 
-    torque_limit: float | None = None
+    effort_limit_sim: float | None = None
     """Torque (effort) limit of the actuator. If not specified, use the value specified in the asset file and interpreted by the simulator. Note that this corresponds to `effort_limit_sim` in Isaac Lab."""
 
     velocity_limit: float | None = None

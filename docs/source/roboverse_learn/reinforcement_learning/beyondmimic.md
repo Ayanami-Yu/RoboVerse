@@ -29,6 +29,14 @@ tar -xzf unitree_description.tar.gz -C roboverse_data/ && \
 rm unitree_description.tar.gz
 ```
 
+Since RoboVerse uses USD format to instantiate robots, you may need to convert URDF files to USD. We provide a utility script `roboverse_pack/tasks/beyondmimic/scripts/convert_urdf.py` for conversion. You can run it using:
+
+```bash
+python roboverse_pack/tasks/beyondmimic/scripts/convert_urdf.py {source-urdf-path} {target-usd-path} --merge-joints --joint-stiffness 0.0 --joint-damping 0.0 --joint-target-type none
+```
+
+Since currently the paths are hard-coded inside the robot config (`roboverse_pack/robots/g1_tracking.py`), you may replace `{source-urdf-path}` with `roboverse_data/unitree_description/urdf/g1/main.urdf` and `{target-usd-path}` with `roboverse_data/unitree_description/usd/g1/g1.usd`.
+
 ### Motion Preprocessing & Registry Setup
 
 We leverage the WandB registry to store and load reference motions automatically.

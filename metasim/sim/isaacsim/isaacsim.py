@@ -574,55 +574,41 @@ class IsaacsimHandler(BaseSimHandler):
         manual_pd = any(mode == "effort" for mode in control_type.values()) if control_type else False
         self._manual_pd_on.append(manual_pd)
 
-        use_urdf: bool = getattr(robot, "use_urdf", False)  # TODO this is a temporary workaround
-        if use_urdf:  # TODO consider converting this to USD
-            spawn_cfg = sim_utils.UrdfFileCfg(
-                fix_base=False,
-                replace_cylinders_with_capsules=True,
-                asset_path=robot.urdf_path,
-                activate_contact_sensors=True,
-                rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                    disable_gravity=not robot.enabled_gravity,
-                    retain_accelerations=False,
-                    linear_damping=0.0,
-                    angular_damping=0.0,
-                    max_linear_velocity=1000.0,
-                    max_angular_velocity=1000.0,
-                    max_depenetration_velocity=1.0,
+        spawn_cfg = sim_utils.UsdFileCfg(
+            usd_path=robot.usd_path,
+            activate_contact_sensors=True,
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                disable_gravity=not robot.enabled_gravity,
+                retain_accelerations=False,
+                linear_damping=0.0,
+                angular_damping=0.0,
+                max_linear_velocity=1000.0,
+                max_angular_velocity=1000.0,
+                max_depenetration_velocity=getattr(
+                    robot, "max_depenetration_velocity", self.scenario.sim_params.max_depenetration_velocity
                 ),
-                articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-                    enabled_self_collisions=robot.enabled_self_collisions,
-                    solver_position_iteration_count=8,
-                    solver_velocity_iteration_count=4,
-                ),
-                joint_drive=sim_utils.UrdfConverterCfg.JointDriveCfg(
-                    gains=sim_utils.UrdfConverterCfg.JointDriveCfg.PDGainsCfg(stiffness=0, damping=0)
-                ),
-            )
-        else:
-            spawn_cfg = sim_utils.UsdFileCfg(
-                usd_path=robot.usd_path,
-                activate_contact_sensors=True,
-                rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                    disable_gravity=not robot.enabled_gravity,
-                    max_depenetration_velocity=getattr(
-                        robot, "max_depenetration_velocity", self.scenario.sim_params.max_depenetration_velocity
-                    ),
-                ),
-                articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-                    enabled_self_collisions=robot.enabled_self_collisions, fix_root_link=robot.fix_base_link
-                ),
-                collision_props=sim_utils.CollisionPropertiesCfg(
+            ),
+            articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+                enabled_self_collisions=robot.enabled_self_collisions,
+                fix_root_link=robot.fix_base_link,
+                solver_position_iteration_count=8,
+                solver_velocity_iteration_count=4,
+            ),
+            collision_props=getattr(
+                robot,
+                "collision_props",
+                sim_utils.CollisionPropertiesCfg(
                     contact_offset=getattr(robot, "contact_offset", self.scenario.sim_params.contact_offset),
                     rest_offset=getattr(robot, "rest_offset", self.scenario.sim_params.rest_offset),
                 ),
-            )
+            ),
+        )
         cfg = ArticulationCfg(
             spawn=spawn_cfg,
             actuators={
                 jn: ImplicitActuatorCfg(
                     joint_names_expr=[jn],
-                    effort_limit_sim=actuator.torque_limit,
+                    effort_limit_sim=actuator.effort_limit_sim,
                     velocity_limit_sim=actuator.velocity_limit_sim,
                     stiffness=actuator.stiffness if not manual_pd else 0.0,
                     damping=actuator.damping if not manual_pd else 0.0,
@@ -1116,7 +1102,7 @@ class IsaacsimHandler(BaseSimHandler):
         contact_sensor_config: ContactSensorCfg = ContactSensorCfg(
             prim_path=f"/World/envs/env_.*/{self.robots[0].name}/.*",
             history_length=3,
-            # update_period=0.005,
+            update_period=0.005,
             force_threshold=10.0,
             track_air_time=True,
         )

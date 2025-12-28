@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 from dataclasses import MISSING
+from typing import Any
 
 from metasim.scenario.robot import BaseActuatorCfg, RobotCfg
 from metasim.utils import configclass
@@ -41,18 +43,20 @@ class ActuatorCfg:
 class G1TrackingCfg(RobotCfg):
     name: str = "g1_tracking"
     num_joints: int = 29
-    # FIXME all of `usd_path`, `xml_path`, `urdf_path`, `mjcf_path` need to be specified even if some of them are not used?
-    usd_path: str = "roboverse_data/robots/g1/usd/g1_29dof_rev_1_0.usd"  # TODO change this
+
+    # NOTE this path should be absolute because the converted USD file may contain references to other files (e.g., @configuration/g1_sensor.usd@) which will be incorrectly resolved if the USD path is relative
+    usd_path: str = os.path.abspath(f"{ASSET_DIR}/unitree_description/usd/g1/g1.usd")
     xml_path: str = f"{ASSET_DIR}/unitree_description/mjcf/g1.xml"
     urdf_path: str = f"{ASSET_DIR}/unitree_description/urdf/g1/main.urdf"
     mjcf_path = xml_path
     enabled_gravity: bool = True
-    # fix_base_link: bool = False
     enabled_self_collisions: bool = True
-    # isaacgym_flip_visual_attachments: bool = False
-    # collapse_fixed_joints: bool = False  # True
 
-    use_urdf = True  # TODO this is a temporary workaround to use URDF in `IsaacsimHandler._add_robot()`
+    max_depenetration_velocity: float = 1.0
+    fix_base_link: bool | None = None
+
+    # to override the default collision properties of USD file config in Isaac Sim handler
+    collision_props: Any | None = None
 
     # NOTE initial state is defined in `BaseEnvCfg.InitialStates`
 
@@ -246,7 +250,7 @@ class G1TrackingCfg(RobotCfg):
 
                 # align actuators with RoboVerse API
                 actuators[name] = BaseActuatorCfg(
-                    torque_limit=effort_limit,
+                    effort_limit_sim=effort_limit,
                     velocity_limit_sim=vel_limit,
                     stiffness=stiffness,
                     damping=damping,
